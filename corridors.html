@@ -43,6 +43,8 @@
       <option value="5f_base.jpg">5th Floor (5F)</option>
       <option value="6f_base.jpg">6th Floor (6F)</option>
     </select>
+    <button class="btn-import" onclick="document.getElementById('mapInput').click()">Replace Selected Map Image</button>
+    <input type="file" id="mapInput" hidden accept="image/*" onchange="updateMap(this)">
   </div>
 
   <div class="modes">
@@ -55,6 +57,7 @@
 
   <div class="controls">
     <label>Import corridors.json (optional):</label>
+    <button class="btn-import" onclick="loadReferenceCorridors()">Load Default corridors.json</button>
     <button class="btn-import" onclick="document.getElementById('fileInput').click()">Upload corridors.json</button>
     <input type="file" id="fileInput" hidden accept=".json" onchange="importJSON(this)">
   </div>
@@ -112,9 +115,26 @@
 
   function floor() { return data[mapSelect.value]; }
 
+  // Floor maps load from next to this page, falling back to the GitHub copy;
+  // "Replace Selected Map Image" swaps in a local file for this session.
+  const MAP_FALLBACK = 'https://raw.githubusercontent.com/shanghai-rits/daniel-library-mcp/main/';
+  const mapSources = {};
+
   function loadMap() {
-    mapImg.src = mapSelect.value;
+    const key = mapSelect.value;
+    mapImg.onerror = () => { if (!mapSources[key] && !mapImg.src.startsWith(MAP_FALLBACK)) mapImg.src = MAP_FALLBACK + key; };
     mapImg.onload = () => { canvas.width = mapImg.width; canvas.height = mapImg.height; draw(); };
+    mapImg.src = mapSources[key] || key;
+  }
+
+  function updateMap(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const key = mapSelect.value;
+    if (mapSources[key]?.startsWith('blob:')) URL.revokeObjectURL(mapSources[key]);
+    mapSources[key] = URL.createObjectURL(file);
+    loadMap();
+    input.value = '';
   }
 
   function switchFloor() { edgePick = null; wallTail = null; loadMap(); refresh(); }
@@ -344,6 +364,14 @@
     const reader = new FileReader();
     reader.onload = (e) => loadObject(JSON.parse(e.target.result));
     reader.readAsText(file);
+  }
+
+  async function loadReferenceCorridors() {
+    const hasData = Object.values(data).some(f => Object.keys(f.waypoints).length || f.edges.length || f.walls.length);
+    if (hasData && !confirm('Replace the current waypoints, edges and walls with the default corridors.json?')) return;
+    const response = await fetch('corridors.json', { cache: 'no-store' });
+    if (!response.ok) return alert('Could not load the default corridors.json');
+    loadObject(await response.json());
   }
 
   function floorKey(mf) { return mf.split('f')[0].toUpperCase() + 'F'; }   // "5f_base.jpg" -> "5F"

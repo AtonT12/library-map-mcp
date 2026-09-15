@@ -36,6 +36,8 @@
       <option value="5f_base.jpg">5th Floor (5F)</option>
       <option value="6f_base.jpg">6th Floor (6F)</option>
     </select>
+    <button class="btn-import" onclick="document.getElementById('mapInput').click()">Replace Selected Map Image</button>
+    <input type="file" id="mapInput" hidden accept="image/*" onchange="updateMap(this)">
   </div>
 
   <div class="controls">
@@ -50,6 +52,7 @@
 
   <div class="controls">
     <label style="font-size: 12px;">2. 导入进度 (可选):</label>
+    <button class="btn-import" onclick="loadReferenceLocations()">Load Default locations.csv</button>
     <button class="btn-import" onclick="document.getElementById('fileInput').click()">Upload locations.csv</button>
     <input type="file" id="fileInput" hidden accept=".csv" onchange="importCSV(this)">
   </div>
@@ -71,13 +74,26 @@
   let points = [];
   const TYPE_COLORS = { Room: '#e74c3c', Shelf: '#f1c40f', Facility: '#1abc9c', Transit: '#9b59b6' };
 
+  // Floor maps load from next to this page, falling back to the GitHub copy;
+  // "Replace Selected Map Image" swaps in a local file for this session.
+  const MAP_FALLBACK = 'https://raw.githubusercontent.com/shanghai-rits/daniel-library-mcp/main/';
+  const mapSources = {};
+
   function loadMap() {
-    mapImg.src = mapSelect.value;
-    mapImg.onload = () => {
-      canvas.width = mapImg.width;
-      canvas.height = mapImg.height;
-      draw();
-    };
+    const key = mapSelect.value;
+    mapImg.onerror = () => { if (!mapSources[key] && !mapImg.src.startsWith(MAP_FALLBACK)) mapImg.src = MAP_FALLBACK + key; };
+    mapImg.onload = () => { canvas.width = mapImg.width; canvas.height = mapImg.height; draw(); };
+    mapImg.src = mapSources[key] || key;
+  }
+
+  function updateMap(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const key = mapSelect.value;
+    if (mapSources[key]?.startsWith('blob:')) URL.revokeObjectURL(mapSources[key]);
+    mapSources[key] = URL.createObjectURL(file);
+    loadMap();
+    input.value = '';
   }
 
   // 点击地图新增点位
@@ -115,8 +131,11 @@
   function importCSV(input) {
     const file = input.files[0];
     const reader = new FileReader();
-    reader.onload = function(e) {
-      const text = e.target.result;
+    reader.onload = (e) => applyLocationsCSV(e.target.result, false);
+    reader.readAsText(file);
+  }
+
+  function applyLocationsCSV(text, replace) {
       const lines = text.split('\n');
       const newPoints = [];
       
@@ -140,15 +159,20 @@
           map_file: clean(cols[7])
         });
       }
-      points = [...points, ...newPoints];
+      points = replace ? newPoints : [...points, ...newPoints];
       // 自动切换到导入数据所在的地图（以第一个点为准）
       if(newPoints.length > 0) {
           mapSelect.value = newPoints[0].map_file;
           loadMap();
       }
       refresh();
-    };
-    reader.readAsText(file);
+  }
+
+  async function loadReferenceLocations() {
+    if (points.length && !confirm('Replace the current points with the default reference locations?')) return;
+    const response = await fetch('locations.csv', { cache: 'no-store' });
+    if (!response.ok) return alert('Could not load the default locations.csv');
+    applyLocationsCSV(await response.text(), true);
   }
 
   function deletePoint(index) {
