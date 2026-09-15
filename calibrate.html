@@ -39,6 +39,16 @@
   </div>
 
   <div class="controls">
+    <label style="font-size: 12px;">新点位类型 / Type for new points:</label>
+    <select id="pointType" style="width:100%; padding:5px;">
+      <option value="Room">Room</option>
+      <option value="Shelf">Shelf</option>
+      <option value="Facility">Facility (restroom, water, printer…)</option>
+      <option value="Transit">Transit (stairs / elevator)</option>
+    </select>
+  </div>
+
+  <div class="controls">
     <label style="font-size: 12px;">2. 导入进度 (可选):</label>
     <button class="btn-import" onclick="document.getElementById('fileInput').click()">Upload locations.csv</button>
     <input type="file" id="fileInput" hidden accept=".csv" onchange="importCSV(this)">
@@ -59,6 +69,7 @@
   const mapSelect = document.getElementById('mapFile');
   let mapImg = new Image();
   let points = [];
+  const TYPE_COLORS = { Room: '#e74c3c', Shelf: '#f1c40f', Facility: '#1abc9c', Transit: '#9b59b6' };
 
   function loadMap() {
     mapImg.src = mapSelect.value;
@@ -80,12 +91,14 @@
     const name = prompt("地点名称:", "");
     if (!name) return;
     
-    const isShelf = confirm("是书架(Shelf)吗？");
-    const callStart = prompt("ID/索书号起点:", name);
-    const callEnd = isShelf ? prompt("索书号终点:", "") : callStart;
+    const type = document.getElementById('pointType').value;
+    const isShelf = type === "Shelf";
+    // Facilities have no call id; leave it blank.
+    const callStart = type === "Facility" ? "" : (prompt("ID/索书号起点:", name) || "");
+    const callEnd = isShelf ? (prompt("索书号终点:", "") || "") : callStart;
 
     points.push({
-      type: isShelf ? "Shelf" : "Room",
+      type: type,
       name: name,
       call_start: callStart,
       call_end: callEnd,
@@ -114,12 +127,13 @@
         
         // 清理引号和空格
         const clean = (str) => str?.replace(/['"]+/g, '').trim();
+        const callId = (str) => { const v = clean(str) || ''; return v.toLowerCase() === 'null' ? '' : v; };
         
         newPoints.push({
           type: clean(cols[0]),
           name: clean(cols[1]),
-          call_start: clean(cols[2]),
-          call_end: clean(cols[3]),
+          call_start: callId(cols[2]),
+          call_end: callId(cols[3]),
           floor: clean(cols[4]),
           x: parseInt(cols[5]),
           y: parseInt(cols[6]),
@@ -155,7 +169,7 @@
       // 只绘制当前楼层的点
       if (p.map_file !== mapSelect.value) return;
 
-      ctx.fillStyle = p.type === 'Shelf' ? '#f1c40f' : '#e74c3c';
+      ctx.fillStyle = TYPE_COLORS[p.type] || '#e74c3c';
       ctx.beginPath();
       ctx.arc(p.x, p.y, 45, 0, Math.PI * 2);
       ctx.fill();
@@ -183,7 +197,7 @@
   function exportCSV() {
     let csv = "type,name,call_start,call_end,floor,x,y,map_file\n";
     points.forEach(p => {
-      csv += `${p.type},"${p.name}",${p.call_start},${p.call_end},${p.floor},${p.x},${p.y},${p.map_file}\n`;
+      csv += `${p.type},"${p.name}",${p.call_start || ''},${p.call_end || ''},${p.floor},${p.x},${p.y},${p.map_file}\n`;
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');

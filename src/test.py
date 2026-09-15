@@ -55,21 +55,75 @@ def directions_test():
     assert wps, "no 5F waypoints loaded from corridors.json"
     near_id, near_xy = library._nearest_waypoint("5F", 4065, 805)
     assert near_id in wps and near_xy == wps[near_id]
-    # A route between two distinct waypoints is connected and starts/ends right.
-    ids = list(wps)
-    route = library._spine_route("5F", ids[0], ids[-1])
-    assert route[0] == ids[0] and route[-1] == ids[-1]
     pts = library._path_points("5F", (3360, 805), (700, 3200))
+    assert pts[0] == (3360, 805) and pts[-1] == (700, 3200)
     assert all(pts[i] != pts[i + 1] for i in range(len(pts) - 1)), "duplicate consecutive points"
     # Cross-floor transit picks the structure nearest the start, same one on arrival.
     s_t, d_t = library._nearest_transit("5F", "6F", 4065, 1270)  # from entrance
     assert s_t and d_t and s_t["call_start"] == d_t["call_start"]
     assert library._transit_options("6F"), "no 6F transit rows"
-    print(f"[ok] unit checks: spine route {route}; nearest transit from entrance = {s_t['name']}")
+    print(f"[ok] unit checks: route has {len(pts)} points; nearest transit from entrance = {s_t['name']}")
 
     print("All directions tests passed.")
+
+
+def walls_test():
+    print("\n--- Testing walls ---")
+    assert library._segments_cross((0, 0), (10, 10), (0, 10), (10, 0))
+    assert not library._segments_cross((0, 0), (10, 0), (0, 5), (10, 5))
+    assert not library._segments_cross((0, 0), (10, 0), (10, 0), (10, 10)), "touching endpoint is not a crossing"
+
+    floor = library.CORRIDORS["5F"]
+    saved = floor.get("walls", [])
+    start, end = (4065, 1270), (440, 3780)  # Entrance -> W522
+    try:
+        floor["walls"] = []
+        open_pts = library._path_points("5F", start, end)
+
+        # A wall between W522 and the corridor it used to branch off from.
+        last_leg = (open_pts[-2], open_pts[-1])
+        mx, my = (last_leg[0][0] + last_leg[1][0]) / 2, (last_leg[0][1] + last_leg[1][1]) / 2
+        floor["walls"] = [((mx, my - 600), (mx, my + 600)), ((mx - 600, my), (mx + 600, my))]
+        pts = library._path_points("5F", start, end)
+        assert pts[0] == start and pts[-1] == end
+        for a, b in zip(pts, pts[1:]):
+            assert not library._blocked("5F", a, b), f"route segment {a}->{b} crosses a wall"
+        assert pts != open_pts
+        print(f"[ok] route avoids a wall: {len(open_pts)} -> {len(pts)} points")
+
+        # A destination sealed inside walls still gets a route (penalized fallback).
+        x, y = end
+        floor["walls"] = [((x - 50, y - 50), (x + 50, y - 50)), ((x + 50, y - 50), (x + 50, y + 50)),
+                          ((x + 50, y + 50), (x - 50, y + 50)), ((x - 50, y + 50), (x - 50, y - 50))]
+        pts = library._path_points("5F", start, end)
+        assert pts[0] == start and pts[-1] == end
+        print("[ok] enclosed destination still routes")
+    finally:
+        floor["walls"] = saved
+
+
+def facilities_test():
+    print("\n--- Testing facilities ---")
+    for q in ["WC", "toilet", "bathroom", "restroom"]:
+        r = library.find_location(q)
+        assert r and r["type"] == "Facility" and "Restroom" in r["name"], (q, r)
+    assert library.find_location("6F restroom")["floor"] == "6F"
+    assert library.find_location("water")["name"] == "5F Water Dispenser"
+    assert "Printer" in library.find_location("print")["name"]
+    r = library.find_location("N")
+    assert r and r["call_start"].lower() != "null" and r["type"] != "Facility"
+
+    msg, images = library.get_directions("restroom", start="N607")
+    assert "6F Restroom" in msg and len(images) == 1 and images[0][0] == "6F", msg
+    msg, images = library.get_directions("water")
+    assert "5F Water Dispenser" in msg and len(images) == 1
+    msg, _ = library.search_and_draw("WC")
+    assert "Also available on 6F" in msg, msg
+    print("[ok] synonyms, nearest-instance and other-floor note")
 
 
 if __name__ == "__main__":
     quick_test()
     directions_test()
+    walls_test()
+    facilities_test()

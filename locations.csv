@@ -69,3 +69,22 @@ Room,"XR Space (W519)",W519,W519,5F,992,3688,5f_base.jpg
 Room,"Storage Room (W520)",W520,W520,5F,1132,3960,5f_base.jpg
 Room,"Sound Box (W521)",W521,W521,5F,872,3960,5f_base.jpg
 Room,"Digital Studio (W522)",W522,W522,5F,440,3780,5f_base.jpg
+Facility,"5F Restroom",,,5F,3158,998,5f_base.jpg
+Facility,"5F Water Dispenser",,,5F,3123,704,5f_base.jpg
+Facility,"5F External Book Drop",,,5F,1410,1292,5f_base.jpg
+Shelf,"Reference Collection",,,5F,3815,1027,5f_base.jpg
+Facility,"Wind Terminal",,,5F,3591,456,5f_base.jpg
+Facility,"Bloomberg Terminal",,,5F,3585,265,5f_base.jpg
+Facility,"5F Printer",,,5F,2558,467,5f_base.jpg
+Facility,"6F Printer",,,6F,2558,508,6f_base.jpg
+Room,"Library Office",,,6F,941,1449,6f_base.jpg
+Facility,"6F Water Dispenser",,,6F,3326,753,6f_base.jpg
+Facility,"6F Restroom",,,6F,3194,1018,6f_base.jpg
+Facility,"Save My Spot Locker",,,6F,3532,746,6f_base.jpg
+Facility,"Self-checkout Machine",,,6F,3731,568,6f_base.jpg
+Shelf,"CHILL",,,6F,3326,362,6f_base.jpg
+Shelf,"Oversize",,,6F,1663,1210,6f_base.jpg
+Shelf,"PPL",,,6F,3638,422,6f_base.jpg
+Shelf,"LEISURE",,,6F,3485,362,6f_base.jpg
+Shelf,"CAREER",,,6F,3399,269,6f_base.jpg
+Facility,"5F Desk Book Drop",,,5F,3919,600,5f_base.jpg

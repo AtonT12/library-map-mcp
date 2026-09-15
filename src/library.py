@@ -1,11 +1,11 @@
 import csv
+import heapq
 import io
 import json
 from PIL import Image, ImageDraw
 import os
 import re
 import difflib
-from collections import deque
 
 # Config: absolute path based on project root
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -16,14 +16,26 @@ CORRIDORS_FILE = os.path.join(BASE_DIR, 'corridors.json')
 # class (1-3 letters) optionally followed by a number, e.g. QA76, PN, B105.3.
 CALL_NUMBER_RE = re.compile(r'^[A-Z]{1,3}\d')
 
+# Everyday words patrons use for facilities, rewritten to the wording used in
+# locations.csv before matching (e.g. "WC" -> "RESTROOM").
+SYNONYMS = [
+    (re.compile(r'\b(WCS?|TOILETS?|BATHROOMS?|WASHROOMS?|LAVATOR(?:Y|IES)|RESTROOMS)\b'), 'RESTROOM'),
+    (re.compile(r'\b(WATER FOUNTAINS?|DRINKING WATER|FOUNTAINS?|WATER(?! DISPENSER))\b'), 'WATER DISPENSER'),
+    (re.compile(r'\b(PRINTERS|PRINTING|PRINT|COPIERS?|COPY|SCANNERS?|SCAN)\b'), 'PRINTER'),
+    (re.compile(r'\bBOOK RETURNS?\b'), 'BOOK DROP'),
+]
+
+# Matches a leading floor tag in a facility name, e.g. "5F Restroom".
+FLOOR_PREFIX_RE = re.compile(r'^[56]F\s+')
+
 # Corridor "spine" per floor: a graph of hallway waypoints (full-res pixel
-# coords) connected by segments. There is no walkability map, so directions snap
-# each location to its nearest waypoint and route along the spine -- this keeps
-# the drawn path inside corridors instead of cutting diagonally through walls.
+# coords) connected by segments, plus optional wall segments. Directions route
+# along the spine and branch off it only where the connector does not cross a
+# drawn wall, so the path stays in corridors and enters rooms through doorways.
 #
-# The spine is authored visually in corridors.html and exported to corridors.json;
-# load_corridors() reads that file at import. The dict below is only a fallback
-# used when corridors.json is missing or unreadable.
+# The spine and walls are authored visually in corridors.html and exported to
+# corridors.json; load_corridors() reads that file at import. The dict below is
+# only a fallback used when corridors.json is missing or unreadable.
 _FALLBACK_CORRIDORS = {
     "5F": {
         "map_file": "5f_base.jpg",
@@ -41,6 +53,7 @@ _FALLBACK_CORRIDORS = {
             ("top_w", "ww_top"),
             ("ww_top", "ww_mid"), ("ww_mid", "ww_bot"),
         ],
+        "walls": [],
     },
     "6F": {
         "map_file": "6f_base.jpg",
@@ -53,16 +66,27 @@ _FALLBACK_CORRIDORS = {
         "edges": [
             ("stair", "main"), ("main", "gsr"), ("main", "scholars"),
         ],
+        "walls": [],
     },
 }
+
+# Routing tunables (full-res pixels).
+SAMPLE_STEP = 150        # spacing of branch-off candidates along each spine edge
+CONNECTOR_SLACK = 400    # accept visible connectors up to this much longer than the shortest
+WALL_PENALTY = 1000      # cost multiplier for a segment that crosses a wall
+
+
+def _xy(v):
+    return (v['x'], v['y']) if isinstance(v, dict) else (v[0], v[1])
 
 
 def load_corridors():
     """Load the corridor spine from corridors.json, falling back to the inline
     dict if the file is missing or malformed.
 
-    JSON shape: {"5F": {"map_file": ..., "waypoints": {id: [x, y]}, "edges": [[a, b]]}}.
-    Waypoint values may be [x, y] lists or {x, y} dicts; both normalize to tuples.
+    JSON shape: {"5F": {"map_file": ..., "waypoints": {id: [x, y]},
+    "edges": [[a, b]], "walls": [[[x1, y1], [x2, y2]]]}}.
+    Point values may be [x, y] lists or {x, y} dicts; both normalize to tuples.
     """
     if not os.path.exists(CORRIDORS_FILE):
         return _FALLBACK_CORRIDORS
@@ -74,13 +98,11 @@ def load_corridors():
 
     out = {}
     for floor, info in raw.items():
-        wps = {}
-        for wid, v in info.get('waypoints', {}).items():
-            wps[wid] = (v['x'], v['y']) if isinstance(v, dict) else (v[0], v[1])
         out[floor] = {
             'map_file': info['map_file'],
-            'waypoints': wps,
+            'waypoints': {wid: _xy(v) for wid, v in info.get('waypoints', {}).items()},
             'edges': [(a, b) for a, b in info.get('edges', [])],
+            'walls': [(_xy(p), _xy(q)) for p, q in info.get('walls', [])],
         }
     return out or _FALLBACK_CORRIDORS
 
@@ -114,27 +136,69 @@ def _call_key(call):
     return (letters, float(num) if num else 0.0)
 
 
-def find_location(query):
-    query = query.strip().upper()
-    if not os.path.exists(DATA_FILE):
-        return None
+def _call_id(row, key='call_start'):
+    """Return a row's call id, upper-cased, or '' when blank/null."""
+    v = (row.get(key) or '').strip().upper()
+    return '' if v == 'NULL' else v
 
+
+def _is_facility(row):
+    return row['type'].lower() == 'facility'
+
+
+def _base_name(row):
+    """Facility name without its floor tag: "5F Restroom" -> "RESTROOM"."""
+    return FLOOR_PREFIX_RE.sub('', row['name'].upper())
+
+
+def _load_rows():
+    if not os.path.exists(DATA_FILE):
+        return []
     with open(DATA_FILE, mode='r', encoding='utf-8-sig') as f:
-        rows = list(csv.DictReader(f))
+        return list(csv.DictReader(f))
+
+
+def _pick_nearest(candidates, near):
+    """Choose among interchangeable facility rows: prefer `near`'s floor, then
+    the shortest straight-line distance. Without `near`, keep CSV order."""
+    if not near or len(candidates) == 1:
+        return candidates[0]
+    floor, x, y = near
+    return min(candidates, key=lambda r: (
+        r['floor'] != floor,
+        (int(r['x']) - x) ** 2 + (int(r['y']) - y) ** 2,
+    ))
+
+
+def find_location(query, near=None):
+    """Resolve a query to a single location row.
+
+    `near` is an optional (floor, x, y). When the query matches a Facility that
+    exists in several places (e.g. restrooms on 5F and 6F) the instance nearest
+    `near` is returned; naming a floor ("6F restroom") pins that one.
+    """
+    query = query.strip().upper()
+    for pattern, repl in SYNONYMS:
+        query = pattern.sub(repl, query)
 
     # Transit rows (stairs/elevator) are routing infrastructure, not lookup
     # targets -- exclude them so a query never resolves to a stairwell.
-    rows = [r for r in rows if r['type'].lower() != 'transit']
+    rows = [r for r in _load_rows() if r['type'].lower() != 'transit']
+    if not rows:
+        return None
 
     best_match = None
     highest_score = 0
 
     for row in rows:
         name = row['name'].upper()
-        call_id = row['call_start'].upper()
+        call_id = _call_id(row)
 
         # --- Strategy 1: Exact substring match (highest priority) ---
-        if query in name or query in call_id:
+        if query in name or (call_id and query in call_id):
+            if _is_facility(row):
+                matches = [r for r in rows if _is_facility(r) and query in r['name'].upper()]
+                return _pick_nearest(matches, near)
             return row
 
         # --- Strategy 2: Acronym match (e.g. "IDRL" -> full lab name) ---
@@ -144,7 +208,8 @@ def find_location(query):
         # --- Strategy 3: Fuzzy matching (handles typos) ---
         # Match against individual words in the name, e.g. split "Researcher Room (N607)"
         words = name.replace('(', ' ').replace(')', ' ').split()
-        words.append(call_id)
+        if call_id:
+            words.append(call_id)
 
         for word in words:
             score = difflib.SequenceMatcher(None, query, word).ratio()
@@ -154,6 +219,8 @@ def find_location(query):
 
     # Threshold of 0.7 to avoid false matches
     if highest_score > 0.7:
+        if _is_facility(best_match):
+            return _pick_nearest(facility_instances(best_match, rows), near)
         return best_match
 
     # --- Strategy 4: Call number range ---
@@ -163,11 +230,28 @@ def find_location(query):
     if CALL_NUMBER_RE.match(query):
         qkey = _call_key(query)
         for row in rows:
-            if row['type'].lower() == 'shelf':
-                if _call_key(row['call_start']) <= qkey <= _call_key(row['call_end']):
+            if row['type'].lower() == 'shelf' and _call_id(row):
+                end = _call_id(row, 'call_end') or _call_id(row)
+                if _call_key(_call_id(row)) <= qkey <= _call_key(end):
                     return row
 
     return None
+
+
+def facility_instances(row, rows=None):
+    """All Facility rows that are the same kind as `row` (same name once the
+    floor tag is stripped), including `row` itself. Non-facilities -> [row]."""
+    if not _is_facility(row):
+        return [row]
+    rows = rows if rows is not None else _load_rows()
+    same = [r for r in rows if _is_facility(r) and _base_name(r) == _base_name(row)]
+    return same or [row]
+
+
+def _other_floors_note(row):
+    """" Also available on 6F." when the same facility exists on other floors."""
+    floors = sorted({r['floor'] for r in facility_instances(row)} - {row['floor']})
+    return f" Also available on {', '.join(floors)}." if floors else ""
 
 
 def search_and_draw(query):
@@ -200,7 +284,8 @@ def search_and_draw(query):
         img.save(buf, format="JPEG", quality=85)
         image_bytes = buf.getvalue()
 
-        msg = f"'{location['name']}' has been marked on the {location['floor']} floor map."
+        msg = (f"'{location['name']}' has been marked on the {location['floor']} floor map."
+               f"{_other_floors_note(location)}")
         return msg, image_bytes
 
     except Exception as e:
@@ -210,10 +295,7 @@ def search_and_draw(query):
 # --- Path finding / directions -------------------------------------------------
 
 def _nearest_waypoint(floor, x, y):
-    """Return (waypoint_id, (wx, wy)) on `floor` nearest to (x, y).
-
-    Used to snap an arbitrary location onto the corridor spine.
-    """
+    """Return (waypoint_id, (wx, wy)) on `floor` nearest to (x, y)."""
     wps = CORRIDORS[floor]["waypoints"]
     best_id, best_xy = min(
         wps.items(),
@@ -242,143 +324,161 @@ def _project_to_segment(p, a, b):
     return (qx, qy), (px - qx) ** 2 + (py - qy) ** 2, t
 
 
-def _nearest_on_spine(floor, x, y):
-    """Snap (x, y) to the nearest point on any corridor edge.
+def _dist(p, q):
+    return ((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2) ** 0.5
 
-    Returns (edge, point, t): the (a, b) edge it landed on, the projected
-    point, and the parameter t along it. Falls back to the nearest waypoint
-    (as a degenerate edge) when the floor has no edges.
+
+def _segments_cross(p1, p2, q1, q2):
+    """True if segment p1-p2 properly intersects segment q1-q2.
+
+    Touching at an endpoint or running collinear does not count, so a route
+    may graze the end of a wall (a door jamb) without being blocked.
     """
-    wps = CORRIDORS[floor]["waypoints"]
-    edges = CORRIDORS[floor]["edges"]
-    best = None
-    for a, b in edges:
-        if a not in wps or b not in wps:
+    def orient(a, b, c):
+        v = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+        return (v > 1e-9) - (v < -1e-9)
+
+    o1, o2 = orient(p1, p2, q1), orient(p1, p2, q2)
+    o3, o4 = orient(q1, q2, p1), orient(q1, q2, p2)
+    return o1 * o2 < 0 and o3 * o4 < 0
+
+
+def _blocked(floor, a, b):
+    """True if the straight segment a-b crosses any wall drawn on `floor`."""
+    return any(_segments_cross(a, b, w1, w2)
+               for w1, w2 in CORRIDORS[floor].get("walls", []))
+
+
+def _dijkstra(adj, start, end):
+    """Shortest path over {node: [(neighbor, cost)]}; returns the node list or None."""
+    dist = {start: 0.0}
+    prev = {}
+    heap = [(0.0, start)]
+    while heap:
+        d, node = heapq.heappop(heap)
+        if node == end:
+            path = [end]
+            while path[-1] != start:
+                path.append(prev[path[-1]])
+            return path[::-1]
+        if d > dist[node]:
             continue
-        point, dist2, t = _project_to_segment((x, y), wps[a], wps[b])
-        if best is None or dist2 < best[0]:
-            best = (dist2, (a, b), point, t)
-    if best is None:
-        wid, wxy = _nearest_waypoint(floor, x, y)
-        return (wid, wid), wxy, 0.0
-    return best[1], best[2], best[3]
-
-
-def _spine_route(floor, start_wp, end_wp):
-    """Return the list of waypoint ids from `start_wp` to `end_wp` (inclusive).
-
-    BFS over the floor's edge adjacency. The spine is a small near-tree, so the
-    breadth-first path is the natural hallway route. Falls back to a direct
-    [start, end] hop if the graph is disconnected for that pair.
-    """
-    if start_wp == end_wp:
-        return [start_wp]
-
-    adj = {}
-    for a, b in CORRIDORS[floor]["edges"]:
-        adj.setdefault(a, []).append(b)
-        adj.setdefault(b, []).append(a)
-
-    queue = deque([start_wp])
-    prev = {start_wp: None}
-    while queue:
-        node = queue.popleft()
-        if node == end_wp:
-            break
-        for nxt in adj.get(node, []):
-            if nxt not in prev:
+        for nxt, cost in adj.get(node, []):
+            nd = d + cost
+            if nd < dist.get(nxt, float('inf')):
+                dist[nxt] = nd
                 prev[nxt] = node
-                queue.append(nxt)
-
-    if end_wp not in prev:
-        return [start_wp, end_wp]
-
-    path, node = [], end_wp
-    while node is not None:
-        path.append(node)
-        node = prev[node]
-    return path[::-1]
+                heapq.heappush(heap, (nd, nxt))
+    return None
 
 
 def _path_points(floor, start_xy, end_xy):
-    """Build the full route polyline on a single floor.
+    """Build the full route polyline on a single floor, respecting walls.
 
-    Each endpoint branches off the spine at the closest point on its nearest
-    *edge* (not the nearest node), so a route leaves the corridor right next to
-    the room instead of detouring to the nearest waypoint. The two branch points
-    are inserted as temporary nodes that split their host edges, and BFS over the
-    augmented graph yields the hallway route between them. Consecutive duplicate
-    points are collapsed.
+    The spine is densified: every edge is split at evenly spaced sample points
+    and at the perpendicular projections of both endpoints. Each endpoint then
+    connects to the spine points it can SEE (straight connector crossing no
+    wall), keeping only connectors close in length to the shortest visible one
+    so the route still leaves the corridor next to the room rather than cutting
+    across open floor. Spine segments that cross a wall stay usable but carry a
+    heavy penalty, so an incomplete wall set never disconnects the route.
+    Dijkstra over this graph yields the path.
     """
-    wps = dict(CORRIDORS[floor]["waypoints"])
-    edges = list(CORRIDORS[floor]["edges"])
+    info = CORRIDORS[floor]
+    wps = info["waypoints"]
+    nodes = dict(wps)            # node id -> (x, y)
+    group = {w: w for w in wps}  # node id -> the spine edge (or waypoint) it lies on
+    adj = {}
 
-    (sa, sb), s_proj, _ = _nearest_on_spine(floor, *start_xy)
-    (ea, eb), e_proj, _ = _nearest_on_spine(floor, *end_xy)
+    def link(a, b, cost):
+        adj.setdefault(a, []).append((b, cost))
+        adj.setdefault(b, []).append((a, cost))
 
-    # Insert each branch point as a temporary node splitting its host edge.
-    def split_edge(edge, point, node_id):
-        a, b = edge
-        wps[node_id] = point
-        if a == b:                       # degenerate (no-edge fallback)
-            edges.append((node_id, a))
-            return
-        if (a, b) in edges:
-            edges.remove((a, b))
-        elif (b, a) in edges:
-            edges.remove((b, a))
-        edges.extend([(a, node_id), (node_id, b)])
+    def seg_cost(p, q):
+        d = _dist(p, q)
+        return d * WALL_PENALTY if _blocked(floor, p, q) else d
 
-    split_edge((sa, sb), s_proj, "__start__")
-    end_anchor = "__end__"
-    if (ea, eb) == (sa, sb):
-        # Both branch onto the same edge -- route directly between the two
-        # projections without splitting twice.
-        wps[end_anchor] = e_proj
-        edges.append(("__start__", end_anchor))
-    else:
-        split_edge((ea, eb), e_proj, end_anchor)
+    # Densify spine edges into chains of short segments.
+    seq = 0
+    for ei, (a, b) in enumerate(info["edges"]):
+        if a not in wps or b not in wps:
+            continue
+        pa, pb = wps[a], wps[b]
+        length = _dist(pa, pb)
+        ts = {i * SAMPLE_STEP / length for i in range(1, int(length // SAMPLE_STEP) + 1)} if length else set()
+        for p in (start_xy, end_xy):
+            ts.add(_project_to_segment(p, pa, pb)[2])
+        chain = [a]
+        for t in sorted(t for t in ts if 0 < t < 1):
+            seq += 1
+            nid = f"__s{seq}__"
+            nodes[nid] = (pa[0] + t * (pb[0] - pa[0]), pa[1] + t * (pb[1] - pa[1]))
+            group[nid] = ei
+            chain.append(nid)
+        chain.append(b)
+        for u, v in zip(chain, chain[1:]):
+            link(u, v, seg_cost(nodes[u], nodes[v]))
 
-    route = _spine_route_on(wps, edges, "__start__", end_anchor)
-    pts = [start_xy] + [wps[w] for w in route] + [end_xy]
+    spine_ids = [n for n in nodes if n in adj] or list(wps)
 
+    def connect(anchor, xy):
+        """Link `anchor` to the nearest visible point of each nearby spine edge;
+        return the shortest visible connector length (or None).
+
+        One connector per edge keeps the route from cutting diagonally along
+        the corridor it joins; several edges let it pick the right corridor.
+        """
+        nodes[anchor] = xy
+        ranked = sorted(spine_ids, key=lambda n: _dist(xy, nodes[n]))
+        best = None
+        joined = set()
+        for n in ranked:
+            d = _dist(xy, nodes[n])
+            if best is not None and d > best + CONNECTOR_SLACK:
+                break
+            if group.get(n) in joined:
+                continue
+            if not _blocked(floor, xy, nodes[n]):
+                best = d if best is None else best
+                joined.add(group.get(n))
+                link(anchor, n, d)
+        if best is None and ranked:
+            # Nothing visible (walls enclose the point): fall back to the
+            # nearest spine point, penalized like any wall crossing.
+            n = ranked[0]
+            link(anchor, n, _dist(xy, nodes[n]) * WALL_PENALTY)
+        return best
+
+    if not spine_ids:
+        return [start_xy, end_xy] if start_xy != end_xy else [start_xy]
+
+    s_best = connect("__start__", start_xy)
+    e_best = connect("__end__", end_xy)
+
+    # Two points closer to each other than to the corridor (e.g. neighbours in
+    # the same room) may walk straight across when nothing blocks the way.
+    direct = _dist(start_xy, end_xy)
+    if (s_best is not None and e_best is not None and direct <= s_best + e_best
+            and not _blocked(floor, start_xy, end_xy)):
+        link("__start__", "__end__", direct)
+
+    route = _dijkstra(adj, "__start__", "__end__") or ["__start__", "__end__"]
+    pts = [nodes[n] for n in route]
+
+    # Collapse duplicates and the collinear sample points along straight runs.
     out = [pts[0]]
     for p in pts[1:]:
-        if p != out[-1]:
-            out.append(p)
+        if p == out[-1]:
+            continue
+        if len(out) >= 2:
+            (ax, ay), (bx, by) = out[-2], out[-1]
+            cross = (bx - ax) * (p[1] - ay) - (by - ay) * (p[0] - ax)
+            dot = (bx - ax) * (p[0] - bx) + (by - ay) * (p[1] - by)
+            if abs(cross) <= 1e-6 * max(1.0, _dist(out[-2], p) ** 2) and dot >= 0:
+                out[-1] = p
+                continue
+        out.append(p)
     return out
-
-
-def _spine_route_on(wps, edges, start_wp, end_wp):
-    """BFS over an explicit (waypoints, edges) graph; returns the id path.
-
-    Like _spine_route but operates on a caller-supplied graph so temporary
-    branch nodes can be routed through. Falls back to a direct hop if
-    disconnected.
-    """
-    if start_wp == end_wp:
-        return [start_wp]
-    adj = {}
-    for a, b in edges:
-        adj.setdefault(a, []).append(b)
-        adj.setdefault(b, []).append(a)
-    queue = deque([start_wp])
-    prev = {start_wp: None}
-    while queue:
-        node = queue.popleft()
-        if node == end_wp:
-            break
-        for nxt in adj.get(node, []):
-            if nxt not in prev:
-                prev[nxt] = node
-                queue.append(nxt)
-    if end_wp not in prev:
-        return [start_wp, end_wp]
-    path, node = [], end_wp
-    while node is not None:
-        path.append(node)
-        node = prev[node]
-    return path[::-1]
 
 
 def _draw_route(map_file, points, start_color="green", end_color="red"):
@@ -421,11 +521,8 @@ def _transit_options(floor):
     Transit points are tagged type=Transit in locations.csv and paired across
     floors by their call id (e.g. STAIRS_CENTRAL, ELEVATOR).
     """
-    if not os.path.exists(DATA_FILE):
-        return []
-    with open(DATA_FILE, mode='r', encoding='utf-8-sig') as f:
-        return [r for r in csv.DictReader(f)
-                if r['type'].lower() == 'transit' and r['floor'] == floor]
+    return [r for r in _load_rows()
+            if r['type'].lower() == 'transit' and r['floor'] == floor]
 
 
 def _nearest_transit(from_floor, to_floor, x, y):
@@ -449,12 +546,10 @@ def get_directions(destination, start=None):
 
     `start` defaults to the library Entrance & Exit. Same-floor trips return one
     annotated map; cross-floor trips route via the stairs and return one map per
-    floor. Raises ValueError if either endpoint cannot be resolved.
+    floor. A facility destination (restroom, printer, ...) resolves to the
+    instance nearest the start. Raises ValueError if either endpoint cannot be
+    resolved.
     """
-    dest = find_location(destination)
-    if not dest:
-        raise ValueError(f"Destination not found for '{destination}'.")
-
     if start:
         src = find_location(start)
         if not src:
@@ -464,8 +559,14 @@ def get_directions(destination, start=None):
         if not src:
             raise ValueError("Default start 'Entrance & Exit' not found in locations.csv.")
 
-    s_floor, d_floor = src['floor'], dest['floor']
+    s_floor = src['floor']
     s_xy = (int(src['x']), int(src['y']))
+
+    dest = find_location(destination, near=(s_floor, *s_xy))
+    if not dest:
+        raise ValueError(f"Destination not found for '{destination}'.")
+
+    d_floor = dest['floor']
     d_xy = (int(dest['x']), int(dest['y']))
 
     # Already there.

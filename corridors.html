@@ -15,8 +15,9 @@
   select, input { width: 100%; padding: 6px; box-sizing: border-box; }
   button { width: 100%; padding: 10px; margin: 5px 0; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: 0.2s; }
   button:hover { opacity: 0.85; }
-  .btn-mode { background: #8e44ad; color: white; }
-  .btn-mode.active { background: #27ae60; }
+  .modes { display: flex; gap: 6px; }
+  .modes button { background: #8e44ad; color: white; }
+  .modes button.active { background: #27ae60; }
   .btn-import { background: #f39c12; color: white; }
   .btn-export { background: #2980b9; color: white; }
   .btn-clear { background: #c0392b; color: white; }
@@ -27,6 +28,7 @@
   .item { background: #1a252f; padding: 7px 10px; margin-bottom: 6px; border-radius: 4px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
   .item .del { color: #e74c3c; cursor: pointer; font-weight: bold; }
   .item.sel { outline: 2px solid #27ae60; }
+  .item.warn { border-left: 4px solid #e74c3c; }
   .section-title { font-size: 12px; text-transform: uppercase; color: #95a5a6; margin: 12px 0 6px; letter-spacing: 1px; }
 </style>
 </head>
@@ -43,14 +45,13 @@
     </select>
   </div>
 
-  <div class="hint">
-    <b>Add waypoint:</b> click empty map space.<br>
-    <b>Add/remove edge:</b> click <i>Edge mode</i>, then click two waypoints.<br>
-    <b>Move waypoint:</b> drag it.<br>
-    <b>Delete waypoint:</b> ✖ in the list (also removes its edges).
+  <div class="modes">
+    <button id="mode-waypoint" onclick="setMode('waypoint')">Waypoint</button>
+    <button id="mode-edge" onclick="setMode('edge')">Edge</button>
+    <button id="mode-wall" onclick="setMode('wall')">Wall</button>
   </div>
 
-  <button id="edgeBtn" class="btn-mode" onclick="toggleEdgeMode()">Edge mode: OFF</button>
+  <div class="hint" id="hint"></div>
 
   <div class="controls">
     <label>Import corridors.json (optional):</label>
@@ -63,6 +64,8 @@
     <div id="wp-list"></div>
     <div class="section-title">Edges (<span id="edgeCount">0</span>)</div>
     <div id="edge-list"></div>
+    <div class="section-title">Walls (<span id="wallCount">0</span>)</div>
+    <div id="wall-list"></div>
   </div>
 
   <button class="btn-clear" onclick="clearFloor()">Clear this floor</button>
@@ -79,15 +82,32 @@
   const mapSelect = document.getElementById('mapFile');
   let mapImg = new Image();
 
-  // data[mapFile] = { waypoints: {id:{x,y}}, edges: [[a,b],...], seq: int }
+  // data[mapFile] = { waypoints: {id:{x,y}}, edges: [[a,b],...], walls: [[{x,y},{x,y}],...], seq: int }
   const data = {
-    '5f_base.jpg': { waypoints: {}, edges: [], seq: 0 },
-    '6f_base.jpg': { waypoints: {}, edges: [], seq: 0 },
+    '5f_base.jpg': { waypoints: {}, edges: [], walls: [], seq: 0 },
+    '6f_base.jpg': { waypoints: {}, edges: [], walls: [], seq: 0 },
   };
 
-  let edgeMode = false;
+  const HINTS = {
+    waypoint: '<b>Add waypoint:</b> click empty map space.<br>' +
+              '<b>Move waypoint:</b> drag it.<br>' +
+              '<b>Delete waypoint:</b> ✖ in the list (also removes its edges).<br>' +
+              '<b>Doorway:</b> put a waypoint in the door gap and connect it to the corridor.',
+    edge:     '<b>Add/remove edge:</b> click two waypoints.<br>' +
+              'Edges that cross a wall are drawn <b style="color:#ff5c5c">red</b> and flagged ⚠ — ' +
+              'routing avoids them, so reroute through a doorway.',
+    wall:     '<b>Draw wall:</b> click to start, click again for each corner.<br>' +
+              '<b>Finish:</b> double-click, Esc, or right-click.<br>' +
+              'Clicks near an existing wall end snap to it. Leave gaps for doors.<br>' +
+              '<b>Delete wall:</b> ✖ in the list.',
+  };
+
+  let mode = 'waypoint';
   let edgePick = null;     // first waypoint id chosen in edge mode
   let dragId = null;       // waypoint being dragged
+  let wallTail = null;     // last placed corner of the wall polyline in progress
+  let cursor = null;       // mouse position for the wall preview
+  let lastClick = 0;
   const HIT = 55;          // pixel radius for clicking a waypoint (full-res)
 
   function floor() { return data[mapSelect.value]; }
@@ -97,7 +117,16 @@
     mapImg.onload = () => { canvas.width = mapImg.width; canvas.height = mapImg.height; draw(); };
   }
 
-  function switchFloor() { edgePick = null; loadMap(); refresh(); }
+  function switchFloor() { edgePick = null; wallTail = null; loadMap(); refresh(); }
+
+  function setMode(m) {
+    mode = m; edgePick = null; wallTail = null;
+    for (const k of ['waypoint', 'edge', 'wall']) {
+      document.getElementById('mode-' + k).classList.toggle('active', k === m);
+    }
+    document.getElementById('hint').innerHTML = HINTS[m];
+    refresh();
+  }
 
   function toMapCoords(e) {
     const rect = canvas.getBoundingClientRect();
@@ -117,19 +146,56 @@
     return best;
   }
 
-  function toggleEdgeMode() {
-    edgeMode = !edgeMode; edgePick = null;
-    const b = document.getElementById('edgeBtn');
-    b.textContent = 'Edge mode: ' + (edgeMode ? 'ON' : 'OFF');
-    b.classList.toggle('active', edgeMode);
-    draw();
+  // Snap to an existing wall endpoint within HIT so wall chains join cleanly.
+  function snapWall(p) {
+    let best = p, bestD = HIT * HIT;
+    for (const [a, b] of floor().walls) {
+      for (const q of [a, b]) {
+        const d = (q.x - p.x) ** 2 + (q.y - p.y) ** 2;
+        if (d <= bestD) { bestD = d; best = { x: q.x, y: q.y }; }
+      }
+    }
+    return best;
   }
 
+  // Proper segment intersection; must match _segments_cross in src/library.py.
+  function segmentsCross(p1, p2, q1, q2) {
+    const orient = (a, b, c) => {
+      const v = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+      return v > 1e-9 ? 1 : v < -1e-9 ? -1 : 0;
+    };
+    return orient(p1, p2, q1) * orient(p1, p2, q2) < 0 && orient(q1, q2, p1) * orient(q1, q2, p2) < 0;
+  }
+
+  function edgeBlocked(a, b) {
+    const f = floor(), p = f.waypoints[a], q = f.waypoints[b];
+    if (!p || !q) return false;
+    return f.walls.some(([w1, w2]) => segmentsCross(p, q, w1, w2));
+  }
+
+  function endWall() { wallTail = null; draw(); }
+
   canvas.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
     const { x, y } = toMapCoords(e);
+
+    if (mode === 'wall') {
+      const now = Date.now();
+      const dbl = now - lastClick < 300;
+      lastClick = now;
+      if (dbl) { endWall(); return; }
+      const p = snapWall({ x, y });
+      if (wallTail && (wallTail.x !== p.x || wallTail.y !== p.y)) {
+        floor().walls.push([wallTail, p]);
+      }
+      wallTail = p;
+      refresh();
+      return;
+    }
+
     const hit = waypointAt(x, y);
 
-    if (edgeMode) {
+    if (mode === 'edge') {
       if (!hit) return;
       if (edgePick === null) { edgePick = hit; }
       else if (edgePick === hit) { edgePick = null; }
@@ -147,9 +213,13 @@
     refresh();
   });
 
+  canvas.addEventListener('contextmenu', (e) => { if (mode === 'wall') { e.preventDefault(); endWall(); } });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') { edgePick = null; endWall(); } });
+
   canvas.addEventListener('mousemove', (e) => {
-    if (dragId === null) return;
     const { x, y } = toMapCoords(e);
+    if (mode === 'wall' && wallTail) { cursor = snapWall({ x, y }); draw(); return; }
+    if (dragId === null) return;
     floor().waypoints[dragId] = { x, y };
     draw();
   });
@@ -170,8 +240,8 @@
   }
 
   function clearFloor() {
-    if (!confirm('Clear all waypoints and edges on this floor?')) return;
-    const f = floor(); f.waypoints = {}; f.edges = []; f.seq = 0; edgePick = null;
+    if (!confirm('Clear all waypoints, edges and walls on this floor?')) return;
+    const f = floor(); f.waypoints = {}; f.edges = []; f.walls = []; f.seq = 0; edgePick = null; wallTail = null;
     refresh();
   }
 
@@ -182,11 +252,26 @@
     ctx.drawImage(mapImg, 0, 0);
     const f = floor();
 
-    // edges
-    ctx.strokeStyle = '#FF8800'; ctx.lineWidth = 12;
+    // walls
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#8B0000'; ctx.lineWidth = 16;
+    f.walls.forEach(([p, q]) => { ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke(); });
+    if (mode === 'wall' && wallTail) {
+      ctx.fillStyle = '#8B0000';
+      ctx.beginPath(); ctx.arc(wallTail.x, wallTail.y, 20, 0, Math.PI * 2); ctx.fill();
+      if (cursor) {
+        ctx.setLineDash([30, 20]);
+        ctx.beginPath(); ctx.moveTo(wallTail.x, wallTail.y); ctx.lineTo(cursor.x, cursor.y); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // edges (red when they cross a wall)
+    ctx.lineWidth = 12;
     f.edges.forEach(([a, b]) => {
       const p = f.waypoints[a], q = f.waypoints[b];
       if (!p || !q) return;
+      ctx.strokeStyle = edgeBlocked(a, b) ? '#FF2D2D' : '#FF8800';
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
     });
 
@@ -206,6 +291,7 @@
     const wpIds = Object.keys(f.waypoints);
     document.getElementById('wpCount').textContent = wpIds.length;
     document.getElementById('edgeCount').textContent = f.edges.length;
+    document.getElementById('wallCount').textContent = f.walls.length;
 
     document.getElementById('wp-list').innerHTML = wpIds.map(id => `
       <div class="item ${id === edgePick ? 'sel' : ''}">
@@ -213,33 +299,50 @@
         <span class="del" onclick="deleteWaypoint('${id}')">✖</span>
       </div>`).join('');
 
-    document.getElementById('edge-list').innerHTML = f.edges.map(([a, b], i) => `
-      <div class="item">
-        <span>${a} — ${b}</span>
+    document.getElementById('edge-list').innerHTML = f.edges.map(([a, b], i) => {
+      const blocked = edgeBlocked(a, b);
+      return `
+      <div class="item ${blocked ? 'warn' : ''}" title="${blocked ? 'Crosses a wall' : ''}">
+        <span>${blocked ? '⚠ ' : ''}${a} — ${b}</span>
         <span class="del" onclick="removeEdgeAt(${i})">✖</span>
+      </div>`;
+    }).join('');
+
+    document.getElementById('wall-list').innerHTML = f.walls.map(([p, q], i) => `
+      <div class="item">
+        <span><small>(${p.x}, ${p.y}) → (${q.x}, ${q.y})</small></span>
+        <span class="del" onclick="removeWallAt(${i})">✖</span>
       </div>`).join('');
   }
 
   function removeEdgeAt(i) { floor().edges.splice(i, 1); refresh(); }
+  function removeWallAt(i) { floor().walls.splice(i, 1); refresh(); }
+
+  const pt = (v) => Array.isArray(v) ? { x: v[0], y: v[1] } : { x: v.x, y: v.y };
+
+  function loadObject(obj) {
+    for (const mf of ['5f_base.jpg', '6f_base.jpg']) {
+      const src = obj[floorKey(mf)] || obj[mf];
+      if (!src) continue;
+      const wps = {}; let seq = 0;
+      for (const id in src.waypoints) {
+        wps[id] = pt(src.waypoints[id]);
+        const n = parseInt((id.match(/\d+/) || [0])[0]); if (n > seq) seq = n;
+      }
+      data[mf] = {
+        waypoints: wps,
+        edges: (src.edges || []).map(e => [e[0], e[1]]),
+        walls: (src.walls || []).map(w => [pt(w[0]), pt(w[1])]),
+        seq,
+      };
+    }
+    refresh();
+  }
 
   function importJSON(input) {
     const file = input.files[0];
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const obj = JSON.parse(e.target.result);
-      for (const mf of ['5f_base.jpg', '6f_base.jpg']) {
-        const src = obj[floorKey(mf)] || obj[mf];
-        if (!src) continue;
-        const wps = {}; let seq = 0;
-        for (const id in src.waypoints) {
-          const v = src.waypoints[id];
-          wps[id] = Array.isArray(v) ? { x: v[0], y: v[1] } : { x: v.x, y: v.y };
-          const n = parseInt((id.match(/\d+/) || [0])[0]); if (n > seq) seq = n;
-        }
-        data[mf] = { waypoints: wps, edges: (src.edges || []).map(e => [e[0], e[1]]), seq };
-      }
-      refresh();
-    };
+    reader.onload = (e) => loadObject(JSON.parse(e.target.result));
     reader.readAsText(file);
   }
 
@@ -251,13 +354,22 @@
       const f = data[mf];
       const waypoints = {};
       for (const id in f.waypoints) waypoints[id] = [f.waypoints[id].x, f.waypoints[id].y];
-      out[floorKey(mf)] = { map_file: mf, waypoints, edges: f.edges.map(([a, b]) => [a, b]) };
+      out[floorKey(mf)] = {
+        map_file: mf,
+        waypoints,
+        edges: f.edges.map(([a, b]) => [a, b]),
+        walls: f.walls.map(([p, q]) => [[p.x, p.y], [q.x, q.y]]),
+      };
     }
     const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = 'corridors.json'; a.click();
   }
 
+  // Start from the corridors.json served next to this page, when there is one.
+  fetch('corridors.json').then(r => r.ok ? r.json() : null).then(obj => obj && loadObject(obj)).catch(() => {});
+
+  setMode('waypoint');
   loadMap();
 </script>
 </body>
