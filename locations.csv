@@ -3,7 +3,7 @@ Transit,"Central Stairs",STAIRS_MAIN,STAIRS_MAIN,5F,4475,950,5f_base.jpg
 Transit,"Central Stairs",STAIRS_MAIN,STAIRS_MAIN,6F,4450,1000,6f_base.jpg
 Transit,"West Stairs",STAIRS_WEST,STAIRS_WEST,5F,770,950,5f_base.jpg
 Transit,"West Stairs",STAIRS_WEST,STAIRS_WEST,6F,770,900,6f_base.jpg
-Transit,"Elevator",ELEVATOR,ELEVATOR,5F,2565,950,5f_base.jpg
+Transit,"Elevator",ELEVATOR,ELEVATOR,5F,2358,455,5f_base.jpg
 Transit,"Elevator",ELEVATOR,ELEVATOR,6F,2355,520,6f_base.jpg
 Room,"Researcher Room (N607)",N607,N607,6F,6309,1024,6f_base.jpg
 Room,"Scholars Space (N606)",N606,N606,6F,6400,483,6f_base.jpg
@@ -81,10 +81,37 @@ Room,"Library Office",,,6F,941,1449,6f_base.jpg
 Facility,"6F Water Dispenser",,,6F,3326,753,6f_base.jpg
 Facility,"6F Restroom",,,6F,3194,1018,6f_base.jpg
 Facility,"Save My Spot Locker",,,6F,3532,746,6f_base.jpg
-Facility,"Self-checkout Machine",,,6F,3731,568,6f_base.jpg
-Shelf,"CHILL",,,6F,3326,362,6f_base.jpg
+Facility,"6F Self-checkout Machine",,,6F,3731,568,6f_base.jpg
+Shelf,"Chinese Learning (CHILL)",,,6F,3326,362,6f_base.jpg
 Shelf,"Oversize",,,6F,1663,1210,6f_base.jpg
 Shelf,"PPL",,,6F,3638,422,6f_base.jpg
 Shelf,"LEISURE",,,6F,3485,362,6f_base.jpg
 Shelf,"CAREER",,,6F,3399,269,6f_base.jpg
 Facility,"5F Desk Book Drop",,,5F,3919,600,5f_base.jpg
+Facility,"5F Self-checkout Machine",,,5F,4562,258,5f_base.jpg
+Facility,"Viewing Station",,,5F,4374,273,5f_base.jpg
+Facility,"External Elevators",,,5F,2355,1046,5f_base.jpg
+Facility,"5F Search Station",,,5F,4243,803,5f_base.jpg
+Facility,"6F Search Station",,,6F,3270,790,6f_base.jpg
+Shelf,"Periodicals (West)",,,5F,1985,721,5f_base.jpg
+Shelf,"Faculty Collection",,,5F,2773,721,5f_base.jpg
+Shelf,"Periodicals (East)",,,5F,3455,721,5f_base.jpg
+Shelf,"Reference Collection (East)",,,5F,4295,1000,5f_base.jpg
+Shelf,"Digital Periodicals",,,5F,4798,576,5f_base.jpg
+Room,"Open Computing",,,5F,3222,230,5f_base.jpg
+Facility,"Bring Your Device Monitors",,,5F,2900,370,5f_base.jpg
+Facility,"Public Computers",,,5F,3349,373,5f_base.jpg
+Facility,"Phone Booth",,,6F,4407,1431,6f_base.jpg
+Facility,"Phone Booth",,,6F,5406,1431,6f_base.jpg
+Facility,"Sound-isolating Earplugs",,,6F,885,738,6f_base.jpg
+Facility,"Sound-isolating Earplugs",,,6F,2565,757,6f_base.jpg
+Facility,"Sound-isolating Earplugs",,,6F,5522,580,6f_base.jpg
+Facility,"5F Fire Exit",,,5F,312,1243,5f_base.jpg
+Facility,"5F Fire Exit",,,5F,609,1409,5f_base.jpg
+Facility,"5F Fire Exit",,,5F,2355,737,5f_base.jpg
+Facility,"5F Fire Exit",,,5F,2879,1128,5f_base.jpg
+Facility,"5F Fire Exit",,,5F,5231,1243,5f_base.jpg
+Facility,"6F Fire Exit",,,6F,701,1326,6f_base.jpg
+Facility,"6F Fire Exit",,,6F,2776,1224,6f_base.jpg
+Facility,"6F Fire Exit",,,6F,6769,897,6f_base.jpg
+Facility,"6F Fire Exit",,,6F,6216,1326,6f_base.jpg

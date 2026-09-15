@@ -23,6 +23,9 @@ SYNONYMS = [
     (re.compile(r'\b(WATER FOUNTAINS?|DRINKING WATER|FOUNTAINS?|WATER(?! DISPENSER))\b'), 'WATER DISPENSER'),
     (re.compile(r'\b(PRINTERS|PRINTING|PRINT|COPIERS?|COPY|SCANNERS?|SCAN)\b'), 'PRINTER'),
     (re.compile(r'\bBOOK RETURNS?\b'), 'BOOK DROP'),
+    (re.compile(r'\bEAR ?PLUGS?\b'), 'EARPLUGS'),
+    (re.compile(r'\bEMERGENCY EXITS?\b'), 'FIRE EXIT'),
+    (re.compile(r'\b(PHONE BOOTHS|CALL BOOTHS?)\b'), 'PHONE BOOTH'),
 ]
 
 # Matches a leading floor tag in a facility name, e.g. "5F Restroom".
