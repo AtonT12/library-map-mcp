@@ -1,9 +1,8 @@
 {
   "servers": {
     "nyush-library": {
-      "type": "stdio",
-      "command": "python",
-      "args": ["/Users/hanchenyue/Desktop/nyush_library/src/mcp_server.py"]
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp"
     }
   }
 }

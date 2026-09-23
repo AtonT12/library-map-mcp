@@ -1,2 +1,2 @@
-mcp==1.26.0
+mcp==1.26.0        # 锁定 1.x：2.x 改名 FastMCP→MCPServer 且引入 4 MiB 请求体上限，升级前必读 MCP_APP_UPGRADE_PLAN.md §7.2；只用 pip install -r requirements.txt，不要单独 pip install -U mcp
 Pillow==10.4.0

@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# MCP App view build artifacts (generated, do not commit)
+src/static/
+schemas/

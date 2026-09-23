@@ -1,11 +1,26 @@
 import base64
+import os
+import sys
+from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import CallToolResult, ImageContent, TextContent
+from models import LibraryStatus, LocationSearchResult, Place, RoutePlan
 
 import library
+import selfcheck
+import views
 
-mcp = FastMCP("NYUSH_Library_Navigator", host="0.0.0.0", port=8000)
+# Kill-switch for the MCP App view (plan Step 6/L1): when "0", no ui://
+# resource is registered and no _meta.ui is attached. Tool behavior is
+# otherwise unchanged. Consumed by the new tools from Step 3 on.
+ENABLE_MCP_APPS = os.environ.get("ENABLE_MCP_APPS", "1") == "1"
+
+mcp = FastMCP(
+    "NYUSH_Library_Navigator",
+    host="0.0.0.0",
+    port=int(os.environ.get("PORT", "8000")),
+)
 
 
 @mcp.tool()
@@ -108,5 +123,133 @@ def get_library_directions(destination: str, start: str = None) -> CallToolResul
     return CallToolResult(content=content)
 
 
+VIEW_URI = "ui://nav/library-view.html"
+
+
+def _ui_meta(visibility=None):
+    """_meta for MCP App tools. None when the kill-switch is off (Step 6/L1):
+    the tool then registers as a plain structured tool with no UI binding."""
+    if not ENABLE_MCP_APPS:
+        return None
+    ui = {"resourceUri": VIEW_URI}
+    if visibility is not None:
+        ui["visibility"] = visibility
+    return {"ui": ui}
+
+
+@mcp.tool(title="Search library locations", meta=_ui_meta())
+def search_locations(query: str, limit: int = 5) -> LocationSearchResult:
+    """Search library locations by name, acronym, or call number.
+
+    Returns a ranked candidate list with stable place ids -- pass an id to
+    get_location_detail or get_route. Use this when a query may match
+    several places. Acronyms and minor typos are tolerated.
+
+    Args:
+        query: A room name or number (e.g. 'N607', 'The Hub'), a call
+            number (e.g. 'QA76.5'), or a facility (e.g. 'restroom').
+        limit: Maximum candidates to return.
+    """
+    try:
+        return library.search_locations(query, limit=limit)
+    except Exception as e:
+        raise ValueError(f"Search failed: {e}")
+
+
+@mcp.tool(title="Plan a walking route", meta=_ui_meta())
+def get_route(destination: str, start: str = None,
+              accessible_only: bool = False) -> RoutePlan:
+    """Plan a walking route between two library locations as structured data.
+
+    Returns per-floor polylines in full-res pixel coords plus human steps.
+    No images are returned; the interactive view renders this data.
+
+    Args:
+        destination: A place id from search_locations, or a room
+            name/call number.
+        start: A place id or name. If omitted, the route begins at the
+            library Entrance & Exit.
+        accessible_only: When true, floor changes use the elevator only.
+    """
+    try:
+        return library.get_route(destination, start,
+                                 accessible_only=accessible_only)
+    except Exception as e:
+        raise ValueError(f"Route failed: {e}")
+
+
+@mcp.tool(title="Show a library place", meta=_ui_meta())
+def get_location_detail(place_id: str) -> Place:
+    """Full record for one place id from search_locations: name, floor,
+    coordinates, call number, and which other floors share the facility.
+
+    Args:
+        place_id: A place id from search_locations (e.g. 'n607-6f').
+    """
+    try:
+        return library.get_location_detail(place_id)
+    except Exception as e:
+        raise ValueError(f"Detail failed: {e}")
+
+
+@mcp.tool(title="Show library status", meta=_ui_meta())
+def get_library_status() -> LibraryStatus:
+    """Current closure/status layer (floor closures, maintenance).
+
+    Reads the optional status.json; when absent, reports source "none"
+    with an empty closure list.
+    """
+    try:
+        return library.get_library_status()
+    except Exception as e:
+        raise ValueError(f"Status failed: {e}")
+
+
+@mcp.tool(title="Render a floor-map view", meta=_ui_meta(visibility=["app"]))
+def get_map_view(floor: str, center: Optional[list] = None,
+                 width: int = 1600, height: int = 1200,
+                 plan_id: str = None) -> CallToolResult:
+    """Render a cropped, high-resolution floor-map tile as WebP.
+
+    Internal to the interactive route view: it is called by the view when
+    the user zooms in, to fetch a cropped high-resolution tile.
+
+    Do NOT call this tool directly. To show a map pin use get_library_map;
+    to show walking directions use get_library_directions.
+
+    Args:
+        floor: "5F" or "6F".
+        center: Full-res [x, y] ROI center. If omitted, the whole map
+            (downscaled to a 1600 px long side) is returned.
+        width: ROI box width in full-res px.
+        height: ROI box height in full-res px.
+        plan_id: Route plan this tile belongs to (cache correlation).
+    """
+    try:
+        image_bytes = views.render_view(floor, center=center, width=width,
+                                        height=height, plan_id=plan_id)
+    except Exception as e:
+        return CallToolResult(
+            content=[TextContent(type="text", text=f"Map view failed: {e}")],
+            isError=True,
+        )
+    return CallToolResult(
+        content=[
+            TextContent(type="text", text=f"Floor-map view for {floor}."),
+            ImageContent(
+                type="image",
+                data=base64.b64encode(image_bytes).decode("ascii"),
+                mimeType="image/webp",
+            ),
+        ],
+    )
+
+
 if __name__ == "__main__":
+    asset_problems = selfcheck.verify_assets()
+    if asset_problems:
+        print("asset check failed, refusing to start:", file=sys.stderr)
+        for problem in asset_problems:
+            print(f"  - {problem}", file=sys.stderr)
+        sys.exit(1)
     mcp.run(transport="streamable-http")
