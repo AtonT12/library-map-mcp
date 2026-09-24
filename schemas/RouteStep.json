@@ -1,0 +1,51 @@
+{
+  "properties": {
+    "instruction": {
+      "title": "Instruction",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "start",
+        "door",
+        "corridor_entry",
+        "corridor_exit",
+        "transit",
+        "end"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "place_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Place Id"
+    },
+    "point": {
+      "items": {
+        "type": "number"
+      },
+      "title": "Point",
+      "type": "array"
+    }
+  },
+  "required": [
+    "kind",
+    "point",
+    "label",
+    "instruction"
+  ],
+  "title": "RouteStep",
+  "type": "object"
+}

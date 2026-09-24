@@ -10,6 +10,7 @@ from models import LibraryStatus, LocationSearchResult, Place, RoutePlan
 import library
 import selfcheck
 import views
+from view import template
 
 # Kill-switch for the MCP App view (plan Step 6/L1): when "0", no ui://
 # resource is registered and no _meta.ui is attached. Tool behavior is
@@ -126,6 +127,16 @@ def get_library_directions(destination: str, start: str = None) -> CallToolResul
 VIEW_URI = "ui://nav/library-view.html"
 
 
+if ENABLE_MCP_APPS:
+    @mcp.resource(VIEW_URI, name="library_view",
+                  mime_type="text/html;profile=mcp-app",
+                  meta={"ui": {"csp": {"resourceDomains": [],
+                                       "connectDomains": []}}})
+    def library_view() -> str:
+        """Interactive route view (single self-contained HTML)."""
+        return template.build_view_html()
+
+
 def _ui_meta(visibility=None):
     """_meta for MCP App tools. None when the kill-switch is off (Step 6/L1):
     the tool then registers as a plain structured tool with no UI binding."""
@@ -208,7 +219,7 @@ def get_library_status() -> LibraryStatus:
 @mcp.tool(title="Render a floor-map view", meta=_ui_meta(visibility=["app"]))
 def get_map_view(floor: str, center: Optional[list] = None,
                  width: int = 1600, height: int = 1200,
-                 plan_id: str = None) -> CallToolResult:
+                 plan_id: str = None, route: Optional[list] = None) -> CallToolResult:
     """Render a cropped, high-resolution floor-map tile as WebP.
 
     Internal to the interactive route view: it is called by the view when
@@ -224,18 +235,23 @@ def get_map_view(floor: str, center: Optional[list] = None,
         width: ROI box width in full-res px.
         height: ROI box height in full-res px.
         plan_id: Route plan this tile belongs to (cache correlation).
+        route: Optional full-res polyline [[x, y], ...] overlaid on the
+            tile (used by the in-view degraded fallback).
     """
     try:
         image_bytes = views.render_view(floor, center=center, width=width,
-                                        height=height, plan_id=plan_id)
+                                        height=height, plan_id=plan_id,
+                                        route=route)
     except Exception as e:
         return CallToolResult(
             content=[TextContent(type="text", text=f"Map view failed: {e}")],
             isError=True,
         )
+    where = f"center {center}, {width}x{height}px ROI" if center else "full map"
     return CallToolResult(
         content=[
-            TextContent(type="text", text=f"Floor-map view for {floor}."),
+            TextContent(type="text",
+                        text=f"Floor-map view for {floor} ({where})."),
             ImageContent(
                 type="image",
                 data=base64.b64encode(image_bytes).decode("ascii"),

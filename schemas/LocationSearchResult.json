@@ -1,0 +1,110 @@
+{
+  "$defs": {
+    "LocationMatch": {
+      "properties": {
+        "exact": {
+          "title": "Exact",
+          "type": "boolean"
+        },
+        "place": {
+          "$ref": "#/$defs/Place"
+        },
+        "score": {
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "place",
+        "exact",
+        "score"
+      ],
+      "title": "LocationMatch",
+      "type": "object"
+    },
+    "Place": {
+      "properties": {
+        "call_number": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Call Number"
+        },
+        "floor": {
+          "title": "Floor",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "other_floors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Other Floors",
+          "type": "array"
+        },
+        "point": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Point",
+          "type": "array"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type",
+        "floor",
+        "point"
+      ],
+      "title": "Place",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "exact_matches": {
+      "title": "Exact Matches",
+      "type": "integer"
+    },
+    "matches": {
+      "items": {
+        "$ref": "#/$defs/LocationMatch"
+      },
+      "title": "Matches",
+      "type": "array"
+    },
+    "query": {
+      "title": "Query",
+      "type": "string"
+    },
+    "total_matches": {
+      "title": "Total Matches",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "query",
+    "matches",
+    "total_matches",
+    "exact_matches"
+  ],
+  "title": "LocationSearchResult",
+  "type": "object"
+}

@@ -1,0 +1,31 @@
+{
+  "properties": {
+    "distance_px": {
+      "title": "Distance Px",
+      "type": "number"
+    },
+    "floor_changes": {
+      "title": "Floor Changes",
+      "type": "integer"
+    },
+    "step_free": {
+      "title": "Step Free",
+      "type": "boolean"
+    },
+    "transits_used": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Transits Used",
+      "type": "array"
+    }
+  },
+  "required": [
+    "distance_px",
+    "floor_changes",
+    "step_free",
+    "transits_used"
+  ],
+  "title": "RouteTotals",
+  "type": "object"
+}

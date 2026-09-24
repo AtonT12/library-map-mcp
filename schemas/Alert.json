@@ -1,0 +1,42 @@
+{
+  "properties": {
+    "area": {
+      "title": "Area",
+      "type": "string"
+    },
+    "floor": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Floor"
+    },
+    "reason": {
+      "title": "Reason",
+      "type": "string"
+    },
+    "until": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Until"
+    }
+  },
+  "required": [
+    "area",
+    "reason"
+  ],
+  "title": "Alert",
+  "type": "object"
+}

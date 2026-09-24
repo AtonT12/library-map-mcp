@@ -1,0 +1,151 @@
+{
+  "$defs": {
+    "RouteStep": {
+      "properties": {
+        "instruction": {
+          "title": "Instruction",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "start",
+            "door",
+            "corridor_entry",
+            "corridor_exit",
+            "transit",
+            "end"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "place_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Place Id"
+        },
+        "point": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Point",
+          "type": "array"
+        }
+      },
+      "required": [
+        "kind",
+        "point",
+        "label",
+        "instruction"
+      ],
+      "title": "RouteStep",
+      "type": "object"
+    },
+    "TransitInfo": {
+      "properties": {
+        "accessible": {
+          "title": "Accessible",
+          "type": "boolean"
+        },
+        "direction": {
+          "enum": [
+            "up",
+            "down"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "from_floor": {
+          "title": "From Floor",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "to_floor": {
+          "title": "To Floor",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "from_floor",
+        "to_floor",
+        "direction",
+        "accessible"
+      ],
+      "title": "TransitInfo",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "floor": {
+      "title": "Floor",
+      "type": "string"
+    },
+    "map_file": {
+      "title": "Map File",
+      "type": "string"
+    },
+    "map_size": {
+      "items": {
+        "type": "integer"
+      },
+      "title": "Map Size",
+      "type": "array"
+    },
+    "polyline": {
+      "items": {
+        "items": {
+          "type": "number"
+        },
+        "type": "array"
+      },
+      "title": "Polyline",
+      "type": "array"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/RouteStep"
+      },
+      "title": "Steps",
+      "type": "array"
+    },
+    "transit": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TransitInfo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "floor",
+    "map_file",
+    "map_size",
+    "polyline",
+    "steps"
+  ],
+  "title": "RouteLeg",
+  "type": "object"
+}

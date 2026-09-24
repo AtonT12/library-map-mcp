@@ -4,4 +4,14 @@ __pycache__/
 
 # MCP App view build artifacts (generated, do not commit)
 src/static/
-schemas/
+dev/preview.html
+# (schemas/ kept committed: snapshot guard against model drift)
+
+# VS Code: keep the shared MCP server wiring, drop personal editor state.
+# settings.json / launch.json routinely carry machine-absolute paths (venv
+# interpreter, debug cwd) -- exactly the leak .vscode/mcp.json was cleaned of
+# in f838938. NOTE: must be ".vscode/*", never ".vscode/" -- excluding the
+# directory itself stops git from ever descending into it, which silently
+# kills the "!" re-include below.
+.vscode/*
+!.vscode/mcp.json

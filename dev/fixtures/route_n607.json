@@ -1,0 +1,143 @@
+{
+ "schema_version": "1.0",
+ "plan_id": "272b3096a062",
+ "generated_at": "2026-09-24T02:48:07.013150+00:00",
+ "origin": {
+  "id": "entrance-5f",
+  "name": "Entrance & Exit",
+  "type": "Room",
+  "floor": "5F",
+  "point": [
+   4065,
+   1270
+  ],
+  "call_number": "ENTRANCE",
+  "other_floors": []
+ },
+ "destination": {
+  "id": "n607-6f",
+  "name": "Researcher Room (N607)",
+  "type": "Room",
+  "floor": "6F",
+  "point": [
+   6309,
+   1024
+  ],
+  "call_number": "N607",
+  "other_floors": []
+ },
+ "totals": {
+  "distance_px": 2820.11120971461,
+  "floor_changes": 1,
+  "step_free": false,
+  "transits_used": [
+   "Central Stairs"
+  ]
+ },
+ "legs": [
+  {
+   "floor": "5F",
+   "map_file": "5f_base.jpg",
+   "map_size": [
+    6062,
+    4205
+   ],
+   "polyline": [
+    [
+     4065.0,
+     1270.0
+    ],
+    [
+     4070.0,
+     1314.0
+    ],
+    [
+     4475.0,
+     950.0
+    ]
+   ],
+   "steps": [
+    {
+     "kind": "start",
+     "point": [
+      4065.0,
+      1270.0
+     ],
+     "place_id": "entrance-5f",
+     "label": "Entrance & Exit",
+     "instruction": "Start at Entrance & Exit."
+    },
+    {
+     "kind": "transit",
+     "point": [
+      4475.0,
+      950.0
+     ],
+     "place_id": null,
+     "label": "Central Stairs",
+     "instruction": "Take the Central Stairs up to 6F."
+    }
+   ],
+   "transit": {
+    "id": "central-stairs",
+    "name": "Central Stairs",
+    "from_floor": "5F",
+    "to_floor": "6F",
+    "direction": "up",
+    "accessible": false
+   }
+  },
+  {
+   "floor": "6F",
+   "map_file": "6f_base.jpg",
+   "map_size": [
+    7534,
+    4044
+   ],
+   "polyline": [
+    [
+     4450.0,
+     1000.0
+    ],
+    [
+     4647.984530949339,
+     683.1541763870641
+    ],
+    [
+     6147.829840442736,
+     704.6959402577054
+    ],
+    [
+     6309.0,
+     1024.0
+    ]
+   ],
+   "steps": [
+    {
+     "kind": "transit",
+     "point": [
+      4450.0,
+      1000.0
+     ],
+     "place_id": null,
+     "label": "Central Stairs",
+     "instruction": "Arrive on 6F at the Central Stairs."
+    },
+    {
+     "kind": "end",
+     "point": [
+      6309.0,
+      1024.0
+     ],
+     "place_id": "n607-6f",
+     "label": "Researcher Room (N607)",
+     "instruction": "You have arrived."
+    }
+   ],
+   "transit": null
+  }
+ ],
+ "warnings": [
+  "6F 未标注墙段，路线可能穿越墙体"
+ ]
+}

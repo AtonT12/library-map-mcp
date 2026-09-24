@@ -1,0 +1,42 @@
+{
+  "properties": {
+    "accessible": {
+      "title": "Accessible",
+      "type": "boolean"
+    },
+    "direction": {
+      "enum": [
+        "up",
+        "down"
+      ],
+      "title": "Direction",
+      "type": "string"
+    },
+    "from_floor": {
+      "title": "From Floor",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "to_floor": {
+      "title": "To Floor",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "from_floor",
+    "to_floor",
+    "direction",
+    "accessible"
+  ],
+  "title": "TransitInfo",
+  "type": "object"
+}

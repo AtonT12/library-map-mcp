@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>dev host harness (Step 5-0)</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 12px; }
+  #layout { display: flex; gap: 12px; }
+  #panel { width: 340px; flex: none; }
+  #stage { flex: 1 1 auto; min-width: 0; }
+  iframe { width: 100%; height: 560px; border: 1px solid #888; }
+  #log { background: #111; color: #cfc; padding: 8px; height: 220px;
+         overflow: auto; white-space: pre-wrap; }
+  fieldset { margin-bottom: 8px; }
+  button { margin: 2px; }
+</style>
+</head>
+<body>
+<h2>dev host harness — simulates the MCP Apps host side</h2>
+<div id="layout">
+  <div id="panel">
+    <fieldset>
+      <legend>hostContext (sent in initialize response)</legend>
+      <label>theme:
+        <select id="theme">
+          <option value="light">light</option>
+          <option value="dark">dark</option>
+          <option value="">(absent)</option>
+        </select>
+      </label><br>
+      <label>maxHeight:
+        <input id="maxheight" type="number" value="720" style="width:80px">
+        <label><input id="noheight" type="checkbox"> omit</label>
+      </label><br>
+      <button id="pushctx" type="button">push host-context-changed</button>
+      <button id="reload" type="button">reload view</button><br>
+      <label>view:
+        <select id="viewsrc">
+          <option value="./view.html">view.html (5-0 shell)</option>
+          <option value="./preview.html">preview.html (template output)</option>
+        </select>
+      </label>
+    </fieldset>
+    <fieldset>
+      <legend>send to view</legend>
+      <button id="sendinput" type="button">tool-input</button><br>
+      <button id="sendstruct" type="button">tool-result (structured)</button><br>
+      <button id="sendreal" type="button">tool-result (real RoutePlan)</button><br>
+      <button id="sendtext" type="button">tool-result (text-only)</button><br>
+      <button id="sendempty" type="button">tool-result (empty)</button><br>
+    </fieldset>
+  </div>
+  <div id="stage">
+    <iframe id="view" title="app view" src="./view.html"></iframe>
+  </div>
+</div>
+<h3>traffic log (this is the HOST_CONTRACT.md evidence)</h3>
+<div id="chatmsg" style="border:2px solid #c00;padding:8px;display:none"></div>
+<pre id="log"></pre>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const frame = () => $("view").contentWindow;
+
+function log(dir, obj) {
+  const t = new Date().toISOString().slice(11, 23);
+  $("log").textContent += `[${t}] ${dir} ${JSON.stringify(obj)}\n`;
+  $("log").scrollTop = $("log").scrollHeight;
+}
+
+function hostContext() {
+  const ctx = {};
+  const theme = $("theme").value;
+  if (theme) ctx.theme = theme;
+  if (!$("noheight").checked) {
+    ctx.containerDimensions = { maxHeight: Number($("maxheight").value) || 720 };
+  }
+  return ctx;
+}
+
+const FIXTURE_STRUCTURED = {
+  plan_id: "9f3c1ab27d04",
+  origin: { id: "entrance-5f", name: "Entrance & Exit", floor: "5F" },
+  destination: { id: "n607-6f", name: "Researcher Room (N607)", floor: "6F" },
+  legs: [{ floor: "5F" }, { floor: "6F" }],
+};
+
+function reply(id, result) {
+  frame().postMessage({ jsonrpc: "2.0", id, result }, "*");
+}
+function fail(id, message) {
+  frame().postMessage({ jsonrpc: "2.0", id, error: { code: -32000, message } }, "*");
+}
+let booted = false;
+function notify(method, params) {
+  const msg = { jsonrpc: "2.0", method, params };
+  log("H=>V", msg);
+  if (!booted && method.indexOf("ui/notifications/tool-") === 0) {
+    log("HARNESS", { warning: "sent before initialized; a spec host MUST NOT do this", method });
+  }
+  frame().postMessage(msg, "*");
+}
+
+window.addEventListener("message", (ev) => {
+  const m = ev.data;
+  if (!m || m.jsonrpc !== "2.0") return;
+  log("V=>H", m);
+  if (m.method === "ui/initialize" && m.id !== undefined) {
+    reply(m.id, {
+      protocolVersion: "2026-01-26",
+      hostCapabilities: { serverTools: {}, serverResources: {}, logging: {} },
+      hostContext: hostContext(),
+    });
+  } else if (m.method === "ui/notifications/initialized") {
+    booted = true;
+  } else if (m.method === "tools/call" && m.id !== undefined) {
+    // Dev echo stand-in for Host->Server tools/call proxying.
+    const p = m.params || {};
+    reply(m.id, {
+      content: [{ type: "text", text: `echo: ${p.name || "?"} called` }],
+      structuredContent: { echo: p.name || null, arguments: p.arguments || {} },
+    });
+  } else if (m.method === "ui/message" && m.id !== undefined) {
+    // Spec request: {role, content:{type,text}} -> result {}.
+    const p = m.params || {};
+    const text = (p.content && p.content.text) || "";
+    const box = $("chatmsg");
+    box.style.display = "block";
+    box.textContent = `chat backfill [${p.role || "?"}]: ${text}`;
+    reply(m.id, {});
+  } else if (m.method === "ui/open-link") {
+    fail(m.id, "open-link not simulated by this harness");
+  }
+});
+
+$("pushctx").addEventListener("click", () => {
+  // Spec: params IS Partial<HostContext> (no wrapper).
+  notify("ui/notifications/host-context-changed", hostContext());
+});
+$("reload").addEventListener("click", () => {
+  $("view").src = $("viewsrc").value;
+});
+$("viewsrc").addEventListener("change", () => {
+  $("view").src = $("viewsrc").value;
+});
+$("sendreal").addEventListener("click", async () => {
+  const res = await fetch("./fixtures/route_n607.json");
+  const plan = await res.json();
+  notify("ui/notifications/tool-result", {
+    content: [{ type: "text", text: "Route from Entrance & Exit to N607." }],
+    structuredContent: plan,
+  });
+});
+$("sendinput").addEventListener("click", () => {
+  notify("ui/notifications/tool-input", { arguments: { destination: "N607" } });
+});
+$("sendstruct").addEventListener("click", () => {
+  notify("ui/notifications/tool-result", {
+    content: [{ type: "text", text: "Route from Entrance & Exit to N607." }],
+    structuredContent: FIXTURE_STRUCTURED,
+  });
+});
+$("sendtext").addEventListener("click", () => {
+  notify("ui/notifications/tool-result", {
+    content: [{ type: "text", text: JSON.stringify(FIXTURE_STRUCTURED) }],
+  });
+});
+$("sendempty").addEventListener("click", () => {
+  notify("ui/notifications/tool-result", { content: [] });
+});
+</script>
+</body>
+</html>

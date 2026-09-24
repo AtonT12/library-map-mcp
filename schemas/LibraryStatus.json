@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "Alert": {
+      "properties": {
+        "area": {
+          "title": "Area",
+          "type": "string"
+        },
+        "floor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Floor"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "until": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Until"
+        }
+      },
+      "required": [
+        "area",
+        "reason"
+      ],
+      "title": "Alert",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "closures": {
+      "items": {
+        "$ref": "#/$defs/Alert"
+      },
+      "title": "Closures",
+      "type": "array"
+    },
+    "source": {
+      "title": "Source",
+      "type": "string"
+    },
+    "updated_at": {
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source",
+    "updated_at"
+  ],
+  "title": "LibraryStatus",
+  "type": "object"
+}

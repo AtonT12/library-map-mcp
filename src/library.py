@@ -593,7 +593,7 @@ def _transit_options(floor):
     """Return the list of inter-floor transit rows (stairs/elevator) on `floor`.
 
     Transit points are tagged type=Transit in locations.csv and paired across
-    floors by their call id (e.g. STAIRS_CENTRAL, ELEVATOR).
+    floors by their call id (e.g. STAIRS_MAIN, STAIRS_WEST, ELEVATOR).
     """
     return [r for r in _load_rows()
             if r['type'].lower() == 'transit' and r['floor'] == floor]
@@ -761,12 +761,30 @@ def _place_id(row):
     return f'{base}-{floor}' if floor else base
 
 
-def _row_to_place(row):
+def _assign_place_ids(rows):
+    """Deterministic globally-unique place ids for a row list, CSV order.
+
+    Upstream data reuses call_starts ("PN") and facility names ("5F Fire
+    Exit"), so base ids collide; later duplicates get -2/-3/... suffixes.
+    Stable for a given file content; only the colliding group shifts when
+    the CSV changes.
+    """
+    counts = {}
+    ids = []
+    for r in rows:
+        base = _place_id(r)
+        n = counts.get(base, 0) + 1
+        counts[base] = n
+        ids.append(base if n == 1 else f"{base}-{n}")
+    return ids
+
+
+def _row_to_place(row, place_id=None):
     call = (row.get('call_start') or '').strip() or None
     if call is not None and call.upper() == 'NULL':
         call = None
     return models.Place(
-        id=_place_id(row),
+        id=place_id or _place_id(row),
         name=row.get('name', ''),
         type=row.get('type', ''),
         floor=row.get('floor', ''),
@@ -778,19 +796,24 @@ def _row_to_place(row):
     )
 
 
-def _match_candidates(query):
-    """All rows matching `query` as (csv_index, row, exact, score), CSV order.
+def _match_candidates(query, rows=None):
+    """All rows matching `query` as (all_rows_index, row, exact, score).
 
     Same four strategies as find_location, but collecting every candidate
     instead of first-hit: exact substring/acronym/call-range hits get
-    exact=True; fuzzy hits carry their best word score (> 0.7).
+    exact=True; fuzzy hits carry their best word score (> 0.7). The index
+    keys into the full (transit-included) row list so callers can align
+    stable place ids via _assign_place_ids on the same list.
     """
     q = query.strip().upper()
     for pattern, repl in SYNONYMS:
         q = pattern.sub(repl, q)
-    rows = [r for r in _load_rows() if r['type'].lower() != 'transit']
+    all_rows = rows if rows is not None else _load_rows()
+    indexed = [(j, r) for j, r in enumerate(all_rows)
+               if r['type'].lower() != 'transit']
     out = []
-    for i, r in enumerate(rows):
+    fuzzy_best = 0.0
+    for i, r in indexed:
         name = r['name'].upper()
         call_id = _call_id(r)
         if q in name or (call_id and q in call_id):
@@ -804,11 +827,16 @@ def _match_candidates(query):
             words.append(call_id)
         best = max((difflib.SequenceMatcher(None, q, w).ratio()
                     for w in words), default=0.0)
+        fuzzy_best = max(fuzzy_best, best)
         if best > 0.7:
             out.append((i, r, False, best))
-            continue
-        if CALL_NUMBER_RE.match(q):
-            qkey = _call_key(q)
+    # Strategy 4 (call-number range) runs only when nothing better matched,
+    # mirroring find_location, where it is unreachable after any exact hit
+    # or any fuzzy score above 0.7.
+    if not any(e for _, _, e, _ in out) and fuzzy_best <= 0.7 \
+            and CALL_NUMBER_RE.match(q):
+        qkey = _call_key(q)
+        for i, r in indexed:
             if r['type'].lower() == 'shelf' and _call_id(r):
                 end = _call_id(r, 'call_end') or _call_id(r)
                 if _call_key(_call_id(r)) <= qkey <= _call_key(end):
@@ -822,8 +850,12 @@ def search_locations(query, limit=5, types=None, near_floor=None):
     Ranking is deterministic: exact hits in CSV order, then fuzzy hits by
     score desc (CSV order breaks ties). `types` hard-filters (e.g.
     ["Room"]); `near_floor` ("5F"/"6F") stably boosts same-floor hits.
+    Ids come from one _assign_place_ids pass over a single row load, so
+    search/detail always agree, even for duplicated base ids.
     """
-    cands = _match_candidates(query)
+    rows = _load_rows()
+    idmap = _assign_place_ids(rows)
+    cands = _match_candidates(query, rows)
     if types:
         wanted = {str(t).lower() for t in types}
         cands = [c for c in cands if c[1].get('type', '').lower() in wanted]
@@ -838,18 +870,36 @@ def search_locations(query, limit=5, types=None, near_floor=None):
     picked = ranked[:max(1, int(limit))]
     return models.LocationSearchResult(
         query=query,
-        matches=[models.LocationMatch(place=_row_to_place(r), exact=e, score=s)
-                 for _, r, e, s in picked],
+        matches=[models.LocationMatch(place=_row_to_place(r, idmap[j]),
+                                      exact=e, score=s)
+                 for j, r, e, s in picked],
         total_matches=total,
         exact_matches=exact)
 
 
 def get_location_detail(place_id):
-    """Full record for one place id (as returned by search_locations)."""
-    for row in _load_rows():
-        if _place_id(row) == place_id:
-            return _row_to_place(row)
-    raise ValueError(f"Unknown place id '{place_id}'.")
+    """Full record for one place id (as returned by search_locations).
+
+    Unknown ids fail loudly AND point the way out: the error names the
+    closest matches and tells the caller to use search_locations, so a
+    model that passes a name ("N607") instead of an id ("n607-6f") can
+    recover in one more call instead of guessing.
+    """
+    rows = _load_rows()
+    idmap = _assign_place_ids(rows)
+    for r, pid in zip(rows, idmap):
+        if pid == place_id:
+            return _row_to_place(r, pid)
+    hints = _match_candidates(place_id, rows)[:3]
+    if hints:
+        sug = "; ".join(
+            f"{idmap[j]} ({r['name']})" for j, r, _, _ in hints)
+        raise ValueError(
+            f"Unknown place id '{place_id}'. Did you mean: {sug}? "
+            "Call search_locations to list valid ids.")
+    raise ValueError(
+        f"Unknown place id '{place_id}'. "
+        "Call search_locations to list valid ids.")
 
 
 _MAP_SIZES = {}
@@ -940,7 +990,7 @@ def get_route(destination, start=None, accessible_only=False):
             map_size=_map_size(leg['floor']), polyline=poly,
             steps=_leg_steps(route['kind'], leg, route['src'], route['dest'],
                              route['transit']),
-            transit=(transit if leg == route['legs'][-1]
+            transit=(transit if leg == route['legs'][0]
                      and route['kind'] == 'cross_floor' else None)))
     names = [route['transit']['name']] if route['transit'] else []
     totals = models.RouteTotals(

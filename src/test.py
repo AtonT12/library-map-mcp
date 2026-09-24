@@ -122,8 +122,55 @@ def facilities_test():
     print("[ok] synonyms, nearest-instance and other-floor note")
 
 
+def build_route_test():
+    print("\n--- Testing build_route ---")
+    r = library.build_route("N607")
+    assert r["kind"] == "cross_floor"
+    assert [leg["floor"] for leg in r["legs"]] == ["5F", "6F"]
+    assert r["transit"]["name"] == "Central Stairs"
+    msg, images = library.get_directions("N607")
+    assert msg == r["msg"], "render wrapper must not alter text"
+    for leg, (floor, _) in zip(r["legs"], images):
+        assert leg["floor"] == floor
+    ra = library.build_route("N607", accessible_only=True)
+    assert ra["transit"]["name"] == "Elevator", ra["transit"]
+    same = library.build_route("W522")
+    assert same["kind"] == "same_floor" and len(same["legs"]) == 1
+    same_msg, _ = library.get_directions("W522")
+    assert same_msg == same["msg"]
+    already = library.build_route("N607", start="N607")
+    assert already["kind"] == "already_there" and len(already["legs"]) == 1
+    print("[ok] build_route shape + text parity + accessible + already-there")
+
+
+def render_view_test():
+    print("\n--- Testing render_view ---")
+    import views
+    full = views.render_view("5F")
+    assert 10000 < len(full) <= 300 * 1024, len(full)
+    tile = views.render_view("5F", center=[4065, 1270],
+                             width=1600, height=1200)
+    assert len(tile) > 1000, len(tile)
+    overlay = views.render_view("5F", route=[[4065, 1270], [4475, 950]])
+    assert len(overlay) > 1000, len(overlay)
+    # Zero-length polyline must not crash the SVG pipeline later.
+    empty = views.render_view("5F", route=[])
+    assert len(empty) > 1000, len(empty)
+    single = views.render_view("5F", route=[[100, 100]])
+    assert len(single) > 1000, len(single)
+    try:
+        views.render_view("9F")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for unknown floor")
+    print(f"[ok] render_view sizes + overlays (full-map {len(full)} B)")
+
+
 if __name__ == "__main__":
     quick_test()
     directions_test()
     walls_test()
     facilities_test()
+    build_route_test()
+    render_view_test()

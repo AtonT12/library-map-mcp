@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>library-view (dev shell, Step 5-0)</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 12px; }
+  #errorbar { display: none; background: #fde8e8; border: 1px solid #c00;
+              padding: 8px; margin-bottom: 8px; }
+  #status { color: #555; margin-bottom: 8px; }
+  pre { background: #f4f4f4; padding: 8px; overflow: auto; }
+  @media (prefers-color-scheme: dark) {
+    pre { background: #222; }
+    #status { color: #aaa; }
+  }
+</style>
+</head>
+<body>
+<div id="errorbar" role="alert"></div>
+<div id="status">booting…</div>
+<div>
+  <button id="ping" type="button">ping host (tools/call)</button>
+  <button id="retry" type="button">retry handshake</button>
+</div>
+<h3>tool-result</h3>
+<pre id="data">{}</pre>
+<h3>hostContext (observed)</h3>
+<pre id="contract">{}</pre>
+<script src="../src/view/viewer.js"></script>
+</body>
+</html>
