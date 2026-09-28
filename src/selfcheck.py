@@ -13,6 +13,7 @@ also runs in `docker build` before the app layer is exercised.
 import csv
 import json
 import os
+import re
 import sys
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -121,7 +122,7 @@ def _check_maps(problems):
         problems.append('Pillow not installed, cannot verify map images')
         return
     for name in MAP_FILES:
-        path = os.path.join(BASE_DIR, name)
+        path = os.path.join(BASE_DIR, 'maps', name)
         if not os.path.exists(path):
             problems.append(f'missing {name}')
             continue
@@ -156,6 +157,53 @@ def _check_transit_pairing(rows, problems):
         )
 
 
+def _route_override_place_ids(rows):
+    """Re-derive place ids exactly like library._assign_place_ids (this module
+    must stay standalone for docker-build use, so the rule is mirrored here)."""
+    counts = {}
+    ids = set()
+    for r in rows or []:
+        key = (r.get('call_start') or '').strip()
+        floor = (r.get('floor') or '').strip().lower()
+        if key and key.upper() != 'NULL':
+            base = key.lower()
+        else:
+            base = re.sub(r'[^a-z0-9]+', '-', (r.get('name') or '').lower()) \
+                .strip('-')
+        base = f'{base}-{floor}' if floor else base
+        n = counts.get(base, 0) + 1
+        counts[base] = n
+        ids.add(base if n == 1 else f'{base}-{n}')
+    return ids
+
+
+def _check_route_overrides(rows, problems):
+    ov_file = os.path.join(BASE_DIR, 'src', 'route_overrides.json')
+    if not os.path.exists(ov_file):
+        return
+    try:
+        with open(ov_file, mode='r', encoding='utf-8-sig') as f:
+            ov = json.load(f)
+    except (OSError, ValueError) as e:
+        problems.append(f'route_overrides.json unreadable: {e}')
+        return
+    if not isinstance(ov, dict):
+        problems.append(
+            f'route_overrides.json must be an object keyed by place_id'
+        )
+        return
+    known = _route_override_place_ids(rows)
+    for k, v in ov.items():
+        if k not in known:
+            problems.append(
+                f'route_overrides.json key {k!r} matches no place_id'
+            )
+        if not (isinstance(v, (list, tuple)) and len(v) == 2):
+            problems.append(
+                f'route_overrides.json value for {k!r} must be [x, y]'
+            )
+
+
 def verify_assets():
     """Check all server assets; return a list of problem strings (empty = ok)."""
     problems = []
@@ -163,6 +211,7 @@ def verify_assets():
     _check_corridors(problems)
     _check_maps(problems)
     _check_transit_pairing(rows, problems)
+    _check_route_overrides(rows, problems)
     return problems
 
 

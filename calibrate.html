@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>NYUSH Library - 录入与编辑神器</title>
+<title>NYUSH Library - Data Entry &amp; Editing Tool</title>
 <style>
   body { font-family: 'Segoe UI', sans-serif; display: flex; height: 100vh; margin: 0; background: #1a1a1a; color: white; }
   #sidebar { width: 350px; background: #2c3e50; padding: 20px; display: flex; flex-direction: column; box-shadow: 2px 0 10px rgba(0,0,0,0.5); }
@@ -28,10 +28,10 @@
 <body>
 
 <div id="sidebar">
-  <h3>数据编辑器</h3>
+  <h3>Data Editor</h3>
   
   <div class="controls">
-    <label style="font-size: 12px;">1. 加载底图:</label>
+    <label style="font-size: 12px;">1. Load base map:</label>
     <select id="mapFile" onchange="loadMap()" style="width:100%; padding:5px;">
       <option value="5f_base.jpg">5th Floor (5F)</option>
       <option value="6f_base.jpg">6th Floor (6F)</option>
@@ -41,7 +41,7 @@
   </div>
 
   <div class="controls">
-    <label style="font-size: 12px;">新点位类型 / Type for new points:</label>
+    <label style="font-size: 12px;">Type for new points:</label>
     <select id="pointType" style="width:100%; padding:5px;">
       <option value="Room">Room</option>
       <option value="Shelf">Shelf</option>
@@ -51,7 +51,7 @@
   </div>
 
   <div class="controls">
-    <label style="font-size: 12px;">2. 导入进度 (可选):</label>
+    <label style="font-size: 12px;">2. Import reference data (optional):</label>
     <button class="btn-import" onclick="loadReferenceLocations()">Load Default locations.csv</button>
     <button class="btn-import" onclick="document.getElementById('fileInput').click()">Upload locations.csv</button>
     <input type="file" id="fileInput" hidden accept=".csv" onchange="importCSV(this)">
@@ -74,16 +74,18 @@
   let points = [];
   const TYPE_COLORS = { Room: '#e74c3c', Shelf: '#f1c40f', Facility: '#1abc9c', Transit: '#9b59b6' };
 
-  // Floor maps load from next to this page, falling back to the GitHub copy;
-  // "Replace Selected Map Image" swaps in a local file for this session.
+  // Floor maps load from the maps/ folder next to this page, falling back to
+  // the GitHub copy; "Replace Selected Map Image" swaps in a local file for
+  // this session. The select value stays a bare map filename (it doubles as
+  // the locations.csv map_file column when exporting).
   const MAP_FALLBACK = 'https://raw.githubusercontent.com/shanghai-rits/daniel-library-mcp/main/';
   const mapSources = {};
 
   function loadMap() {
     const key = mapSelect.value;
-    mapImg.onerror = () => { if (!mapSources[key] && !mapImg.src.startsWith(MAP_FALLBACK)) mapImg.src = MAP_FALLBACK + key; };
+    mapImg.onerror = () => { if (!mapSources[key] && !mapImg.src.startsWith(MAP_FALLBACK)) mapImg.src = MAP_FALLBACK + 'maps/' + key; };
     mapImg.onload = () => { canvas.width = mapImg.width; canvas.height = mapImg.height; draw(); };
-    mapImg.src = mapSources[key] || key;
+    mapImg.src = mapSources[key] || ('maps/' + key);
   }
 
   function updateMap(input) {
@@ -96,7 +98,7 @@
     input.value = '';
   }
 
-  // 点击地图新增点位
+  // click the map to add a point
   canvas.onclick = (e) => {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
@@ -104,14 +106,14 @@
     const x = Math.round((e.clientX - rect.left) * scaleX);
     const y = Math.round((e.clientY - rect.top) * scaleY);
 
-    const name = prompt("地点名称:", "");
+    const name = prompt("Place name:", "");
     if (!name) return;
     
     const type = document.getElementById('pointType').value;
     const isShelf = type === "Shelf";
     // Facilities have no call id; leave it blank.
-    const callStart = type === "Facility" ? "" : (prompt("ID/索书号起点:", name) || "");
-    const callEnd = isShelf ? (prompt("索书号终点:", "") || "") : callStart;
+    const callStart = type === "Facility" ? "" : (prompt("ID / call number start:", name) || "");
+    const callEnd = isShelf ? (prompt("Call number end:", "") || "") : callStart;
 
     points.push({
       type: type,
@@ -127,7 +129,7 @@
     refresh();
   };
 
-  // 导入 CSV 功能
+  // import a locations CSV
   function importCSV(input) {
     const file = input.files[0];
     const reader = new FileReader();
@@ -139,12 +141,12 @@
       const lines = text.split('\n');
       const newPoints = [];
       
-      // 跳过表头，遍历每一行
+      // skip the header row and iterate over the rest
       for (let i = 1; i < lines.length; i++) {
         const cols = lines[i].split(',');
         if (cols.length < 8) continue;
         
-        // 清理引号和空格
+        // strip stray quotes and surrounding whitespace
         const clean = (str) => str?.replace(/['"]+/g, '').trim();
         const callId = (str) => { const v = clean(str) || ''; return v.toLowerCase() === 'null' ? '' : v; };
         
@@ -160,7 +162,7 @@
         });
       }
       points = replace ? newPoints : [...points, ...newPoints];
-      // 自动切换到导入数据所在的地图（以第一个点为准）
+      // auto-switch to the map used by the imported data (first point wins)
       if(newPoints.length > 0) {
           mapSelect.value = newPoints[0].map_file;
           loadMap();
@@ -176,7 +178,7 @@
   }
 
   function deletePoint(index) {
-    if(confirm("确定删除这个点吗？")) {
+    if(confirm("Delete this point?")) {
       points.splice(index, 1);
       refresh();
     }
@@ -190,7 +192,7 @@
   function draw() {
     ctx.drawImage(mapImg, 0, 0);
     points.forEach((p, index) => {
-      // 只绘制当前楼层的点
+      // only draw points belonging to the selected floor
       if (p.map_file !== mapSelect.value) return;
 
       ctx.fillStyle = TYPE_COLORS[p.type] || '#e74c3c';

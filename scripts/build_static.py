@@ -21,7 +21,7 @@ JOBS = (
 def main():
     os.makedirs(STATIC_DIR, exist_ok=True)
     for src_name, out_name in JOBS:
-        src = os.path.join(BASE_DIR, src_name)
+        src = os.path.join(BASE_DIR, 'maps', src_name)
         out = os.path.join(STATIC_DIR, out_name)
         with Image.open(src) as img:
             if img.mode != 'RGB':

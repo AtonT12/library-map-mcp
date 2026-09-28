@@ -115,16 +115,17 @@
 
   function floor() { return data[mapSelect.value]; }
 
-  // Floor maps load from next to this page, falling back to the GitHub copy;
-  // "Replace Selected Map Image" swaps in a local file for this session.
+   // Floor maps load from the maps/ folder next to this page, falling back to
+   // the GitHub copy; "Replace Selected Map Image" swaps in a local file for
+   // this session. The select value stays a bare map filename.
   const MAP_FALLBACK = 'https://raw.githubusercontent.com/shanghai-rits/daniel-library-mcp/main/';
   const mapSources = {};
 
   function loadMap() {
     const key = mapSelect.value;
-    mapImg.onerror = () => { if (!mapSources[key] && !mapImg.src.startsWith(MAP_FALLBACK)) mapImg.src = MAP_FALLBACK + key; };
+    mapImg.onerror = () => { if (!mapSources[key] && !mapImg.src.startsWith(MAP_FALLBACK)) mapImg.src = MAP_FALLBACK + 'maps/' + key; };
     mapImg.onload = () => { canvas.width = mapImg.width; canvas.height = mapImg.height; draw(); };
-    mapImg.src = mapSources[key] || key;
+    mapImg.src = mapSources[key] || ('maps/' + key);
   }
 
   function updateMap(input) {

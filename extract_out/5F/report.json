@@ -1,0 +1,550 @@
+{
+ "floor": "5F",
+ "source_ai": "5F Library Floor and Seats Map(SVG) copy.ai",
+ "input_set": "ON-only (P1.5 ruling)",
+ "transform": {
+  "sx": 3.459582976292488,
+  "sy": 3.8925925925925924,
+  "px0": 4,
+  "py0": 0,
+  "pdf_rect": [
+   18.5,
+   0.0,
+   1769.0,
+   1080.0
+  ]
+ },
+ "stats": {
+  "fill_centerlines": 143,
+  "fill_nonquad_skipped": 1,
+  "stroke_segments": 26,
+  "stroke_dup_dropped": 4,
+  "merged_runs": 155,
+  "runs_out_of_sheet_dropped": 1,
+  "final_wall_segments": 154,
+  "door_gaps": 52
+ },
+ "wall_thickness_pdf_units": {
+  "median": 3.17,
+  "p10": 2.0,
+  "p90": 3.17
+ },
+ "doors_pdf": [
+  {
+   "position": [
+    450.6,
+    903.6
+   ],
+   "half_width": 6.38,
+   "theta_deg": 0.0,
+   "left_run_len": 17.6
+  },
+  {
+   "position": [
+    420.1,
+    550.0
+   ],
+   "half_width": 6.65,
+   "theta_deg": 0.0,
+   "left_run_len": 54.6
+  },
+  {
+   "position": [
+    317.3,
+    550.0
+   ],
+   "half_width": 6.72,
+   "theta_deg": 0.0,
+   "left_run_len": 48.1
+  },
+  {
+   "position": [
+    352.1,
+    550.0
+   ],
+   "half_width": 6.75,
+   "theta_deg": 0.0,
+   "left_run_len": 21.3
+  },
+  {
+   "position": [
+    721.8,
+    903.6
+   ],
+   "half_width": 7.58,
+   "theta_deg": 0.0,
+   "left_run_len": 17.0
+  },
+  {
+   "position": [
+    458.7,
+    172.1
+   ],
+   "half_width": 7.98,
+   "theta_deg": 90.0,
+   "left_run_len": 70.4
+  },
+  {
+   "position": [
+    189.7,
+    452.7
+   ],
+   "half_width": 7.99,
+   "theta_deg": 90.0,
+   "left_run_len": 54.8
+  },
+  {
+   "position": [
+    414.9,
+    622.3
+   ],
+   "half_width": 8.06,
+   "theta_deg": 0.0,
+   "left_run_len": 241.4
+  },
+  {
+   "position": [
+    1460.9,
+    702.9
+   ],
+   "half_width": 8.15,
+   "theta_deg": 0.0,
+   "left_run_len": 76.8
+  },
+  {
+   "position": [
+    189.7,
+    253.4
+   ],
+   "half_width": 8.53,
+   "theta_deg": 90.0,
+   "left_run_len": 23.1
+  },
+  {
+   "position": [
+    1548.8,
+    881.2
+   ],
+   "half_width": 8.76,
+   "theta_deg": 0.0,
+   "left_run_len": 116.8
+  },
+  {
+   "position": [
+    1562.6,
+    921.8
+   ],
+   "half_width": 8.81,
+   "theta_deg": 90.0,
+   "left_run_len": 31.1
+  },
+  {
+   "position": [
+    335.5,
+    99.1
+   ],
+   "half_width": 8.86,
+   "theta_deg": 90.0,
+   "left_run_len": 45.5
+  },
+  {
+   "position": [
+    458.7,
+    84.7
+   ],
+   "half_width": 9.0,
+   "theta_deg": 90.0,
+   "left_run_len": 32.0
+  },
+  {
+   "position": [
+    458.7,
+    352.4
+   ],
+   "half_width": 9.05,
+   "theta_deg": 90.0,
+   "left_run_len": 23.2
+  },
+  {
+   "position": [
+    1051.4,
+    702.9
+   ],
+   "half_width": 9.12,
+   "theta_deg": 0.0,
+   "left_run_len": 76.8
+  },
+  {
+   "position": [
+    437.9,
+    611.3
+   ],
+   "half_width": 9.43,
+   "theta_deg": 90.0,
+   "left_run_len": 52.9
+  },
+  {
+   "position": [
+    189.7,
+    212.3
+   ],
+   "half_width": 9.51,
+   "theta_deg": 90.0,
+   "left_run_len": 112.5
+  },
+  {
+   "position": [
+    405.1,
+    109.5
+   ],
+   "half_width": 9.65,
+   "theta_deg": 0.0,
+   "left_run_len": 62.6
+  },
+  {
+   "position": [
+    458.7,
+    310.2
+   ],
+   "half_width": 9.95,
+   "theta_deg": 90.0,
+   "left_run_len": 120.2
+  },
+  {
+   "position": [
+    189.7,
+    78.9
+   ],
+   "half_width": 11.34,
+   "theta_deg": 90.0,
+   "left_run_len": 22.9
+  },
+  {
+   "position": [
+    390.0,
+    201.2
+   ],
+   "half_width": 13.37,
+   "theta_deg": 0.0,
+   "left_run_len": 188.5
+  },
+  {
+   "position": [
+    1061.3,
+    717.6
+   ],
+   "half_width": 13.74,
+   "theta_deg": 90.0,
+   "left_run_len": 61.8
+  },
+  {
+   "position": [
+    1266.9,
+    718.1
+   ],
+   "half_width": 14.28,
+   "theta_deg": 90.0,
+   "left_run_len": 48.5
+  },
+  {
+   "position": [
+    246.6,
+    550.0
+   ],
+   "half_width": 15.91,
+   "theta_deg": 0.0,
+   "left_run_len": 64.8
+  },
+  {
+   "position": [
+    246.6,
+    513.0
+   ],
+   "half_width": 15.91,
+   "theta_deg": 0.0,
+   "left_run_len": 39.8
+  },
+  {
+   "position": [
+    496.0,
+    801.0
+   ],
+   "half_width": 16.0,
+   "theta_deg": 0.0,
+   "left_run_len": 63.0
+  },
+  {
+   "position": [
+    496.0,
+    864.7
+   ],
+   "half_width": 16.01,
+   "theta_deg": 0.0,
+   "left_run_len": 63.0
+  },
+  {
+   "position": [
+    857.9,
+    702.9
+   ],
+   "half_width": 16.02,
+   "theta_deg": 0.0,
+   "left_run_len": 357.4
+  },
+  {
+   "position": [
+    1268.4,
+    702.9
+   ],
+   "half_width": 16.03,
+   "theta_deg": 0.0,
+   "left_run_len": 191.9
+  },
+  {
+   "position": [
+    949.2,
+    702.9
+   ],
+   "half_width": 16.2,
+   "theta_deg": 0.0,
+   "left_run_len": 59.1
+  },
+  {
+   "position": [
+    1359.8,
+    702.9
+   ],
+   "half_width": 16.2,
+   "theta_deg": 0.0,
+   "left_run_len": 59.1
+  },
+  {
+   "position": [
+    189.7,
+    373.6
+   ],
+   "half_width": 16.24,
+   "theta_deg": 90.0,
+   "left_run_len": 95.4
+  },
+  {
+   "position": [
+    338.0,
+    513.0
+   ],
+   "half_width": 16.5,
+   "theta_deg": 0.0,
+   "left_run_len": 59.0
+  },
+  {
+   "position": [
+    479.0,
+    802.5
+   ],
+   "half_width": 17.5,
+   "theta_deg": 90.0,
+   "left_run_len": 52.0
+  },
+  {
+   "position": [
+    513.0,
+    802.5
+   ],
+   "half_width": 17.5,
+   "theta_deg": 90.0,
+   "left_run_len": 52.0
+  },
+  {
+   "position": [
+    292.0,
+    531.2
+   ],
+   "half_width": 17.78,
+   "theta_deg": 90.0,
+   "left_run_len": 51.8
+  },
+  {
+   "position": [
+    384.3,
+    531.2
+   ],
+   "half_width": 17.78,
+   "theta_deg": 90.0,
+   "left_run_len": 51.8
+  },
+  {
+   "position": [
+    1246.0,
+    938.7
+   ],
+   "half_width": 17.84,
+   "theta_deg": 0.0,
+   "left_run_len": 153.6
+  },
+  {
+   "position": [
+    247.4,
+    531.4
+   ],
+   "half_width": 17.94,
+   "theta_deg": 90.0,
+   "left_run_len": 51.8
+  },
+  {
+   "position": [
+    1194.2,
+    713.0
+   ],
+   "half_width": 18.29,
+   "theta_deg": 90.0,
+   "left_run_len": 59.5
+  },
+  {
+   "position": [
+    462.4,
+    702.9
+   ],
+   "half_width": 22.03,
+   "theta_deg": 0.0,
+   "left_run_len": 102.3
+  },
+  {
+   "position": [
+    721.9,
+    850.5
+   ],
+   "half_width": 29.1,
+   "theta_deg": 0.0,
+   "left_run_len": 117.4
+  },
+  {
+   "position": [
+    1129.5,
+    732.5
+   ],
+   "half_width": 29.68,
+   "theta_deg": 0.0,
+   "left_run_len": 173.4
+  },
+  {
+   "position": [
+    379.4,
+    864.7
+   ],
+   "half_width": 37.61,
+   "theta_deg": 0.0,
+   "left_run_len": 94.4
+  },
+  {
+   "position": [
+    1129.9,
+    1008.1
+   ],
+   "half_width": 45.57,
+   "theta_deg": 0.0,
+   "left_run_len": 626.5
+  },
+  {
+   "position": [
+    1129.3,
+    1000.4
+   ],
+   "half_width": 52.31,
+   "theta_deg": 0.0,
+   "left_run_len": 611.6
+  },
+  {
+   "position": [
+    247.4,
+    676.8
+   ],
+   "half_width": 55.82,
+   "theta_deg": 90.0,
+   "left_run_len": 71.7
+  },
+  {
+   "position": [
+    1130.4,
+    635.2
+   ],
+   "half_width": 62.42,
+   "theta_deg": 0.0,
+   "left_run_len": 286.5
+  },
+  {
+   "position": [
+    1493.7,
+    938.7
+   ],
+   "half_width": 67.3,
+   "theta_deg": 0.0,
+   "left_run_len": 162.6
+  },
+  {
+   "position": [
+    1128.6,
+    643.7
+   ],
+   "half_width": 69.78,
+   "theta_deg": 0.0,
+   "left_run_len": 270.7
+  },
+  {
+   "position": [
+    1130.1,
+    655.7
+   ],
+   "half_width": 69.92,
+   "theta_deg": 0.0,
+   "left_run_len": 270.7
+  }
+ ],
+ "min_door_half_width_pdf_units": 6.38,
+ "provisional_min_spine_margin_px": 1.2,
+ "regression_vs_hand": {
+  "per_wall": [
+   {
+    "hand_wall": 0,
+    "median_px": 109.0,
+    "max_px": 443.4
+   },
+   {
+    "hand_wall": 1,
+    "median_px": 113.2,
+    "max_px": 229.4
+   },
+   {
+    "hand_wall": 2,
+    "median_px": 130.3,
+    "max_px": 203.8
+   },
+   {
+    "hand_wall": 3,
+    "median_px": 165.3,
+    "max_px": 203.8
+   },
+   {
+    "hand_wall": 4,
+    "median_px": 125.3,
+    "max_px": 145.8
+   },
+   {
+    "hand_wall": 5,
+    "median_px": 83.6,
+    "max_px": 520.3
+   },
+   {
+    "hand_wall": 6,
+    "median_px": 518.7,
+    "max_px": 532.6
+   },
+   {
+    "hand_wall": 7,
+    "median_px": 55.4,
+    "max_px": 57.4
+   }
+  ],
+  "median_of_medians_px": 119.2
+ },
+ "note": "pixel artifacts use the coarse P2.0 transform; re-run with --transform after P3 calibration"
+}

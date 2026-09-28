@@ -39,8 +39,7 @@ def render_view(floor, center=None, width=1280, height=960, scale=1.0,
     _ = plan_id
     if floor not in library.CORRIDORS:
         raise ValueError(f"Unknown floor '{floor}'.")
-    path = os.path.join(library.BASE_DIR,
-                        library.CORRIDORS[floor]['map_file'])
+    path = library.map_path(library.CORRIDORS[floor]['map_file'])
     if not os.path.exists(path):
         raise FileNotFoundError(f"Base map {path} not found.")
     img = Image.open(path)

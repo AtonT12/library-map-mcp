@@ -70,7 +70,7 @@ def build_view_html():
         uri = _data_uri(os.path.join(STATIC_DIR, small))
         with Image.open(os.path.join(STATIC_DIR, small)) as img:
             sw, sh = img.size
-        with Image.open(os.path.join(BASE_DIR, full)) as img:
+        with Image.open(os.path.join(BASE_DIR, "maps", full)) as img:
             fw, fh = img.size
         maps[floor] = {"href": uri, "w": sw, "h": sh, "fw": fw, "fh": fh}
     manifest = json.dumps({"maps": maps})

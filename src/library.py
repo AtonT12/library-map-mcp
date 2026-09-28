@@ -16,6 +16,18 @@ import models
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_FILE = os.path.join(BASE_DIR, 'locations.csv')
 CORRIDORS_FILE = os.path.join(BASE_DIR, 'corridors.json')
+# Data-side point relocation (WALL_EXTRACTION_PLAN §2.1): keyed by place_id,
+# applied once in _load_rows() so all coordinate consumers share the same
+# effective coords. locations.csv itself is never modified.
+OVERRIDES_FILE = os.path.join(BASE_DIR, 'src', 'route_overrides.json')
+# Floor map images live under maps/. Stored references (locations.csv column
+# and corridors.json "map_file") keep bare filenames; resolve them here.
+MAPS_DIR = os.path.join(BASE_DIR, 'maps')
+
+
+def map_path(map_file):
+    """Absolute path for a floor map image name (bare or subfoldered)."""
+    return os.path.join(MAPS_DIR, os.path.basename(map_file))
 
 # Kill-switch mirror (plan Step 6/L1): when "0", the image tools keep today's
 # exact JPEG bytes and no ui:// metadata is advertised. mcp_server.py reads
@@ -182,36 +194,85 @@ def _base_name(row):
     return FLOOR_PREFIX_RE.sub('', row['name'].upper())
 
 
-_ROWS_CACHE = {'mtime': None, 'rows': None}
+_ROWS_CACHE = {'mtime': None, 'ov_mtime': None, 'rows': None}
+
+
+def _override_mtime():
+    try:
+        return os.path.getmtime(OVERRIDES_FILE)
+    except OSError:
+        return None
+
+
+def _apply_overrides(rows):
+    """Return rows with route_overrides.json ([place_id] -> [x, y]) applied.
+
+    Invalid keys/values are ignored here on purpose: unknown-key failures are
+    reported fail-fast by selfcheck at startup, and a bad deploy must not take
+    down a serving process mid-session.
+    """
+    try:
+        with open(OVERRIDES_FILE, mode='r', encoding='utf-8-sig') as f:
+            ov = json.load(f)
+    except (OSError, ValueError):
+        return rows
+    if not isinstance(ov, dict) or not ov:
+        return rows
+    id_to_idx = {pid: i for i, pid in enumerate(_assign_place_ids(rows))}
+    for pid, target in ov.items():
+        idx = id_to_idx.get(pid)
+        if idx is None:
+            continue
+        if not isinstance(target, (list, tuple)) or len(target) != 2:
+            continue
+        try:
+            x = float(target[0])
+            y = float(target[1])
+        except (TypeError, ValueError):
+            continue
+        row = rows[idx]
+        row['x'] = str(int(x)) if x == int(x) else repr(x)
+        row['y'] = str(int(y)) if y == int(y) else repr(y)
+    return rows
 
 
 def _load_rows():
-    """Read locations.csv, hot-reloading when its mtime changed.
+    """Read locations.csv (+route_overrides.json), hot-reloading on mtime change.
 
-    A failed reload keeps the previous (working) rows and logs a warning --
-    it must never take down a serving process. Returns fresh dict copies per
-    call, same as the old read-every-time behavior. With no cache yet and no
-    readable file, returns [] (the old missing-file behavior).
+    The cache key covers both files' mtimes so editing the override alone
+    triggers a refresh (WALL_EXTRACTION_PLAN §2.1 req. 2). Cached rows are the
+    *effective* coordinates, shared by every consumer (§2.1 req. 1/4). A failed
+    reload keeps the previous (working) rows and logs a warning. With no cache
+    yet and no readable file, returns [] (the old missing-file behavior).
     """
     try:
         mtime = os.path.getmtime(DATA_FILE)
     except OSError:
-        cached = _ROWS_CACHE['rows']
-        return [dict(r) for r in cached] if cached is not None else []
-    if _ROWS_CACHE['rows'] is not None and _ROWS_CACHE['mtime'] == mtime:
-        return [dict(r) for r in _ROWS_CACHE['rows']]
-    try:
-        with open(DATA_FILE, mode='r', encoding='utf-8-sig') as f:
-            rows = list(csv.DictReader(f))
-    except (OSError, csv.Error) as e:
-        print(f"warning: failed to reload locations.csv ({e}), "
-              "keeping previous data", file=sys.stderr)
+        mtime = None
+    ov_mtime = _override_mtime()
+    cached = _ROWS_CACHE['rows']
+    if (cached is not None and _ROWS_CACHE['mtime'] == mtime
+            and _ROWS_CACHE['ov_mtime'] == ov_mtime):
+        return [dict(r) for r in cached]
+    rows = None
+    if mtime is not None:
+        try:
+            with open(DATA_FILE, mode='r', encoding='utf-8-sig') as f:
+                rows = list(csv.DictReader(f))
+        except (OSError, csv.Error) as e:
+            print(f"warning: failed to reload locations.csv ({e}), "
+                  "keeping previous data", file=sys.stderr)
+            _ROWS_CACHE['mtime'] = mtime
+            _ROWS_CACHE['ov_mtime'] = ov_mtime
+            return [dict(r) for r in cached] if cached is not None else []
+    elif cached is not None:
+        rows = cached
+    if rows is not None:
+        effective = _apply_overrides([dict(r) for r in rows])
         _ROWS_CACHE['mtime'] = mtime
-        cached = _ROWS_CACHE['rows']
-        return [dict(r) for r in cached] if cached is not None else []
-    _ROWS_CACHE['mtime'] = mtime
-    _ROWS_CACHE['rows'] = rows
-    return [dict(r) for r in rows]
+        _ROWS_CACHE['ov_mtime'] = ov_mtime
+        _ROWS_CACHE['rows'] = effective
+    return [dict(r) for r in effective] if rows is not None else []
 
 
 def _pick_nearest(candidates, near):
@@ -328,7 +389,7 @@ def search_and_draw(query):
                 msg = (f"'{location['name']}' has been marked on the {location['floor']} floor map."
                        f"{_other_floors_note(location)}")
                 return msg, render_view(floor, pin=(x, y))
-        base_map_path = os.path.join(BASE_DIR, location['map_file'])
+        base_map_path = map_path(location['map_file'])
 
         if not os.path.exists(base_map_path):
             raise FileNotFoundError(f"Base map {base_map_path} not found. Please check the filename.")
@@ -562,7 +623,7 @@ def _draw_route(map_file, points, start_color="green", end_color="red"):
         if floor is not None:
             return render_view(floor, route=points,
                                start_color=start_color, end_color=end_color)
-    base_map_path = os.path.join(BASE_DIR, map_file)
+    base_map_path = map_path(map_file)
     if not os.path.exists(base_map_path):
         raise FileNotFoundError(f"Base map {base_map_path} not found. Please check the filename.")
 
@@ -907,7 +968,7 @@ _MAP_SIZES = {}
 
 def _map_size(floor):
     if floor not in _MAP_SIZES:
-        path = os.path.join(BASE_DIR, CORRIDORS[floor]['map_file'])
+        path = map_path(CORRIDORS[floor]['map_file'])
         with Image.open(path) as img:
             _MAP_SIZES[floor] = [img.width, img.height]
     return _MAP_SIZES[floor]

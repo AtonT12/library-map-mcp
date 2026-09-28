@@ -176,7 +176,7 @@ def test_route_boundaries():
 
 def test_missing_map_iserror():
     import mcp_server
-    jpg = os.path.join(library.BASE_DIR, "5f_base.jpg")
+    jpg = os.path.join(library.BASE_DIR, "maps", "5f_base.jpg")
     tmp = jpg + ".tmp"
     os.rename(jpg, tmp)
     try:
