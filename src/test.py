@@ -1,3 +1,6 @@
+import math
+import os
+
 import library
 
 
@@ -167,10 +170,99 @@ def render_view_test():
     print(f"[ok] render_view sizes + overlays (full-map {len(full)} B)")
 
 
+# ---------------------------------------------------------------------------
+# Real-data wall tests. These assert properties of corridors.json itself and
+# of every route built from it, so they keep working unchanged when the wall
+# list grows from 8 hand-drawn segments to hundreds of extracted ones.
+# Budgets default to 0; raise them via env vars only while iterating on data.
+# ---------------------------------------------------------------------------
+WALL_CLEARANCE_PX = 6        # interior route segments must stay this far from any wall
+SPINE_MIN_MARGIN_PX = 20     # spine edges must stay this far from any wall
+
+
+def _pt_seg_dist(p, a, b):
+    (px, py), (ax, ay), (bx, by) = p, a, b
+    dx, dy = bx - ax, by - ay
+    l2 = dx * dx + dy * dy
+    t = 0.0 if l2 == 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / l2))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def _seg_seg_dist(a, b, c, d):
+    if library._segments_cross(a, b, c, d):
+        return 0.0
+    return min(_pt_seg_dist(a, c, d), _pt_seg_dist(b, c, d),
+               _pt_seg_dist(c, a, b), _pt_seg_dist(d, a, b))
+
+
+def _leg_points(leg):
+    for key in ("polyline", "points", "path", "pts"):
+        if key in leg:
+            return [tuple(p) for p in leg[key]]
+    raise KeyError(f"leg has no point list (keys: {sorted(leg)}); adjust _leg_points")
+
+
+def spine_vs_walls_test():
+    print("\n--- Testing spine vs walls (data consistency) ---")
+    for floor, cfg in library.CORRIDORS.items():
+        wps, walls = cfg["waypoints"], cfg.get("walls", [])
+        if not walls:
+            print(f"[warn] {floor}: no walls loaded, nothing to check")
+            continue
+        worst = float("inf")
+        for a_id, b_id in cfg["edges"]:
+            a, b = tuple(wps[a_id]), tuple(wps[b_id])
+            for w in walls:
+                d = _seg_seg_dist(a, b, tuple(w[0]), tuple(w[1]))
+                assert d > 0, f"{floor}: spine edge {a_id}-{b_id} crosses wall {w}"
+                worst = min(worst, d)
+        assert worst >= SPINE_MIN_MARGIN_PX, f"{floor}: spine only {worst:.0f}px from a wall"
+        print(f"[ok] {floor}: {len(walls)} walls, min spine-to-wall margin {worst:.0f}px")
+
+
+def all_locations_wall_test():
+    print("\n--- Testing every location for wall crossings ---")
+    crossing_budget = int(os.environ.get("WALL_CROSSING_BUDGET", "0"))
+    clearance_budget = int(os.environ.get("WALL_CLEARANCE_BUDGET", "0"))
+    rows = [r for r in library._load_rows() if r.get("type") != "Transit"]
+    crossing, tight, unresolved, total = [], [], [], 0
+    for start in (None, "N607"):
+        for row in rows:
+            dest = row["name"]
+            try:
+                route = library.build_route(dest, start=start)
+            except ValueError:
+                unresolved.append((start, dest))
+                continue
+            total += 1
+            for leg in route["legs"]:
+                floor, pts = leg["floor"], _leg_points(leg)
+                walls = library.CORRIDORS[floor].get("walls", [])
+                segs = list(zip(pts, pts[1:]))
+                hit = any(library._segments_cross(a, b, tuple(w[0]), tuple(w[1]))
+                          for a, b in segs for w in walls)
+                if hit:
+                    crossing.append((start, dest, floor))
+                # Skip first/last segment: room connectors legitimately touch door gaps.
+                inner = segs[1:-1]
+                if not hit and any(_seg_seg_dist(a, b, tuple(w[0]), tuple(w[1])) < WALL_CLEARANCE_PX
+                                   for a, b in inner for w in walls):
+                    tight.append((start, dest, floor))
+    if unresolved:
+        print(f"[warn] {len(unresolved)} names did not resolve: {unresolved[:5]}")
+    print(f"routes checked: {total}; wall-crossing (penalized fallback): {len(crossing)}; "
+          f"under {WALL_CLEARANCE_PX}px clearance: {len(tight)}")
+    assert len(crossing) <= crossing_budget, f"routes crossing walls: {crossing[:10]}"
+    assert len(tight) <= clearance_budget, f"routes hugging walls: {tight[:10]}"
+    print("[ok] no route crosses or hugs a wall")
+
+
 if __name__ == "__main__":
     quick_test()
     directions_test()
     walls_test()
+    spine_vs_walls_test()
+    all_locations_wall_test()
     facilities_test()
     build_route_test()
     render_view_test()
