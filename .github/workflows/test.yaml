@@ -21,6 +21,9 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
+      - name: Pre-generate static assets
+        run: python scripts/build_static.py
+
       - name: Python tests
         run: |
           PYTHONPATH=src python src/test.py
