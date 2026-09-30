@@ -1,0 +1,1745 @@
+{
+ "version": 1,
+ "floors": {
+  "6F": {
+   "removed": [
+    {
+     "hash": "682e16dcf399",
+     "reason": "Full-width plan/legend divider line at pdf y=540 (graphic rule, not a wall)",
+     "px": [
+      [
+       32.0,
+       2008.5
+      ],
+      [
+       7571.5,
+       2008.5
+      ]
+     ]
+    },
+    {
+     "hash": "d100709a9714",
+     "reason": "Bottom-panel horizontal rule near 6TH FLOOR label (legend decoration)",
+     "px": [
+      [
+       329.7,
+       3766.8
+      ],
+      [
+       1601.2,
+       3766.8
+      ]
+     ]
+    },
+    {
+     "hash": "b6115900e615",
+     "reason": "Strike-through line across the North-arrow label (legend decoration)",
+     "px": [
+      [
+       5480.5,
+       1921.9
+      ],
+      [
+       5855.5,
+       1921.9
+      ]
+     ]
+    },
+    {
+     "hash": "6010e64b96a1",
+     "reason": "Underline strike through the Library 6F title text (title decoration)",
+     "px": [
+      [
+       5886.1,
+       3627.4
+      ],
+      [
+       6727.6,
+       3627.4
+      ]
+     ]
+    },
+    {
+     "hash": "1fe3c527e882",
+     "reason": "Full-height sheet/panel border line at pdf x=68 (crosses legend zone; top coincides with NW building corner only)",
+     "px": [
+      [
+       300.6,
+       514.3
+      ],
+      [
+       300.6,
+       3798.1
+      ]
+     ]
+    },
+    {
+     "hash": "e427f25ce957",
+     "reason": "Twin of 1fe3c527e882, 9u apart (double border line, not a wall)",
+     "px": [
+      [
+       335.5,
+       540.7
+      ],
+      [
+       335.5,
+       3773.6
+      ]
+     ]
+    },
+    {
+     "hash": "075206d0ea0e",
+     "reason": "Staff Office panel right border (crosses legend zone; top 245px touches SW stairwell corner only)",
+     "px": [
+      [
+       1594.9,
+       1403.1
+      ],
+      [
+       1594.9,
+       3773.6
+      ]
+     ]
+    },
+    {
+     "hash": "e24403e4c8f1",
+     "reason": "Staff Office panel right border twin of 075206d0ea0e, 7.5u apart (double border line, not a wall)",
+     "px": [
+      [
+       1624.3,
+       1434.0
+      ],
+      [
+       1624.3,
+       3801.5
+      ]
+     ]
+    },
+    {
+     "hash": "1220d4ff646c",
+     "reason": "shelf-row side edge flanking PN stack row (crop p5_pn)",
+     "px": [
+      [
+       1517.5,
+       649.2
+      ],
+      [
+       1517.5,
+       272.8
+      ]
+     ]
+    },
+    {
+     "hash": "56cbf2cc8944",
+     "reason": "twin of 1220d4ff646c, 8u apart (shelf-row sides)",
+     "px": [
+      [
+       1485.3,
+       618.3
+      ],
+      [
+       1485.3,
+       247.6
+      ]
+     ]
+    },
+    {
+     "hash": "d897cf08f2a6",
+     "reason": "line through elevator-shaft interiors + open floor (crop g1bw)",
+     "px": [
+      [
+       3911.7,
+       662.0
+      ],
+      [
+       3911.7,
+       272.8
+      ]
+     ]
+    },
+    {
+     "hash": "326b77fc07c0",
+     "reason": "twin of d897cf08f2a6",
+     "px": [
+      [
+       3939.6,
+       481.6
+      ],
+      [
+       3939.6,
+       248.4
+      ]
+     ]
+    },
+    {
+     "hash": "9048effd18db",
+     "reason": "same elevator/open-floor morphology as d897cf08f2a6",
+     "px": [
+      [
+       4331.1,
+       662.0
+      ],
+      [
+       4331.1,
+       272.5
+      ]
+     ]
+    },
+    {
+     "hash": "91ebd21d9a30",
+     "reason": "twin of 9048effd18db",
+     "px": [
+      [
+       4304.8,
+       481.2
+      ],
+      [
+       4304.8,
+       247.6
+      ]
+     ]
+    },
+    {
+     "hash": "14590695cddc",
+     "reason": "far-east twin crossing desk rows + empty margin (crop g1cov)",
+     "px": [
+      [
+       7369.3,
+       583.3
+      ],
+      [
+       7369.3,
+       272.5
+      ]
+     ]
+    },
+    {
+     "hash": "97aa79f211ed",
+     "reason": "twin of 14590695cddc",
+     "px": [
+      [
+       7397.2,
+       599.1
+      ],
+      [
+       7397.2,
+       247.6
+      ]
+     ]
+    },
+    {
+     "hash": "4f914ca9a5b4",
+     "reason": "N606D/E room+desk crossing (crop g1cov)",
+     "px": [
+      [
+       6745.3,
+       974.7
+      ],
+      [
+       6745.3,
+       578.4
+      ]
+     ]
+    },
+    {
+     "hash": "40bbb8fcccd5",
+     "reason": "twin of 4f914ca9a5b4",
+     "px": [
+      [
+       6770.8,
+       990.6
+      ],
+      [
+       6770.8,
+       599.1
+      ]
+     ]
+    },
+    {
+     "hash": "97ccdfbaca67",
+     "reason": "N607 desk-crossing (crop g3x2)",
+     "px": [
+      [
+       6627.9,
+       1293.1
+      ],
+      [
+       6627.9,
+       962.7
+      ]
+     ]
+    },
+    {
+     "hash": "fb1f81ec656d",
+     "reason": "twin of 97ccdfbaca67",
+     "px": [
+      [
+       6653.8,
+       1316.8
+      ],
+      [
+       6653.8,
+       990.6
+      ]
+     ]
+    },
+    {
+     "hash": "71d001011809",
+     "reason": "open floor south of phone booth, no wall rendering + twin pattern",
+     "px": [
+      [
+       5461.2,
+       1628.4
+      ],
+      [
+       5461.2,
+       1395.9
+      ]
+     ]
+    },
+    {
+     "hash": "32373a4b4754",
+     "reason": "twin of 71d001011809",
+     "px": [
+      [
+       5486.8,
+       1654.4
+      ],
+      [
+       5486.8,
+       1425.7
+      ]
+     ]
+    },
+    {
+     "hash": "33a02d04e410",
+     "reason": "open-corridor twin, no wall rendering + twin pattern",
+     "px": [
+      [
+       3853.6,
+       1628.4
+      ],
+      [
+       3853.6,
+       1395.9
+      ]
+     ]
+    },
+    {
+     "hash": "0c83256ce94c",
+     "reason": "twin of 33a02d04e410",
+     "px": [
+      [
+       3877.9,
+       1657.8
+      ],
+      [
+       3877.9,
+       1429.8
+      ]
+     ]
+    },
+    {
+     "hash": "f9df686a2d9c",
+     "reason": "N601 desk+label crossing (crop g2a2)",
+     "px": [
+      [
+       2787.1,
+       1628.4
+      ],
+      [
+       2787.1,
+       1395.9
+      ]
+     ]
+    },
+    {
+     "hash": "f592163cdf91",
+     "reason": "twin of f9df686a2d9c",
+     "px": [
+      [
+       2756.4,
+       1658.2
+      ],
+      [
+       2756.4,
+       1432.5
+      ]
+     ]
+    },
+    {
+     "hash": "3683757e0eb8",
+     "reason": "short floating stub west of PN sign, no wall-colored source within 2u (fringe extraction)",
+     "px": [
+      [
+       1023.9,
+       795.0
+      ],
+      [
+       1126.0,
+       795.0
+      ]
+     ]
+    },
+    {
+     "hash": "fe32ad1b7379",
+     "reason": "short floating stub in amenity band, no wall-colored source within 2u",
+     "px": [
+      [
+       2424.6,
+       699.7
+      ],
+      [
+       2492.2,
+       699.7
+      ]
+     ]
+    },
+    {
+     "hash": "9a97680af4a5",
+     "reason": "short floating stub in amenity band, no wall-colored source within 2u",
+     "px": [
+      [
+       2551.8,
+       699.7
+      ],
+      [
+       2618.6,
+       699.7
+      ]
+     ]
+    },
+    {
+     "hash": "04e94176434b",
+     "reason": "minimap-layer decoration edge (source fill on \u5c0f\u5730\u56fe layer, thickness 1080u)",
+     "px": [
+      [
+       1367.5,
+       649.2
+      ],
+      [
+       1367.5,
+       540.7
+      ]
+     ]
+    },
+    {
+     "hash": "b4d3ae6fad37",
+     "reason": "P5-T: dup of w80 (double-line fill+stroke; render has one)",
+     "px": [
+      [
+       1513.6,
+       278.5
+      ],
+      [
+       3915.2,
+       278.5
+      ]
+     ]
+    },
+    {
+     "hash": "ca626bccbc2c",
+     "reason": "P5-T: dup of w81 (same as w0)",
+     "px": [
+      [
+       4326.0,
+       278.5
+      ],
+      [
+       7375.6,
+       278.5
+      ]
+     ]
+    },
+    {
+     "hash": "de326c950d2b",
+     "reason": "P5-T: shelf-zone weak line (no render twin)",
+     "px": [
+      [
+       2428.2,
+       538.5
+      ],
+      [
+       2820.4,
+       538.5
+      ]
+     ]
+    },
+    {
+     "hash": "f3d7d2b55f19",
+     "reason": "P5-T: desk divider in PN zone (tile visual)",
+     "px": [
+      [
+       1361.6,
+       647.3
+      ],
+      [
+       1430.3,
+       647.3
+      ]
+     ]
+    },
+    {
+     "hash": "80c643dddaf1",
+     "reason": "P5-T: same class as w17 (PN desks)",
+     "px": [
+      [
+       1480.6,
+       647.3
+      ],
+      [
+       1523.8,
+       647.3
+      ]
+     ]
+    },
+    {
+     "hash": "7197a3db401e",
+     "reason": "P5-T: west panel line, zero render match",
+     "px": [
+      [
+       657.5,
+       1209.8
+      ],
+      [
+       1115.0,
+       1209.8
+      ]
+     ]
+    },
+    {
+     "hash": "acfe03c9f2df",
+     "reason": "P5-T: west vertical, zero render match",
+     "px": [
+      [
+       1020.8,
+       1708.6
+      ],
+      [
+       1021.2,
+       1395.9
+      ]
+     ]
+    },
+    {
+     "hash": "4fcafbad0605",
+     "reason": "P5-T: staff-zone vertical, zero render match",
+     "px": [
+      [
+       1119.7,
+       1215.9
+      ],
+      [
+       1119.7,
+       789.0
+      ]
+     ]
+    },
+    {
+     "hash": "52f063c09b8d",
+     "reason": "P5-T: shelf-upright zone weak line",
+     "px": [
+      [
+       2814.2,
+       707.2
+      ],
+      [
+       2814.2,
+       524.1
+      ]
+     ]
+    },
+    {
+     "hash": "ae42f849017a",
+     "reason": "P5-T: shelf-upright zone weak line",
+     "px": [
+      [
+       2430.9,
+       694.1
+      ],
+      [
+       2430.9,
+       524.1
+      ]
+     ]
+    },
+    {
+     "hash": "1bd9ec9af891",
+     "reason": "P5-T: shelf-upright zone weak line",
+     "px": [
+      [
+       2612.3,
+       705.7
+      ],
+      [
+       2612.7,
+       534.3
+      ]
+     ]
+    },
+    {
+     "hash": "a11d14214314",
+     "reason": "P5-T: core void cross-wall (tile visual: floats in void)",
+     "px": [
+      [
+       1951.8,
+       1287.1
+      ],
+      [
+       1951.8,
+       836.8
+      ]
+     ]
+    },
+    {
+     "hash": "ef57be343871",
+     "reason": "P5-T: legend decoration (tile visual)",
+     "px": [
+      [
+       908.9,
+       1701.5
+      ],
+      [
+       908.9,
+       1640.1
+      ]
+     ]
+    },
+    {
+     "hash": "7da82a883f01",
+     "reason": "P5-T: legend zone, zero render match (numeric)",
+     "px": [
+      [
+       908.9,
+       1457.4
+      ],
+      [
+       908.9,
+       1395.9
+      ]
+     ]
+    },
+    {
+     "hash": "3c8083b8424d",
+     "reason": "P5-T: dup of w52 (9px double-line; numeric)",
+     "px": [
+      [
+       3322.7,
+       1140.9
+      ],
+      [
+       3448.0,
+       1140.9
+      ]
+     ]
+    },
+    {
+     "hash": "090a9b336491",
+     "reason": "P5-T: restroom stall phantom (tile visual)",
+     "px": [
+      [
+       3444.0,
+       1138.2
+      ],
+      [
+       3444.0,
+       1018.4
+      ]
+     ]
+    },
+    {
+     "hash": "d38298401818",
+     "reason": "P5-T: door-cheek phantom (numeric: only wall touch)",
+     "px": [
+      [
+       3325.4,
+       1282.5
+      ],
+      [
+       3325.4,
+       1214.0
+      ]
+     ]
+    },
+    {
+     "hash": "abfee22457ee",
+     "reason": "P5-T: stall piece, zero render match (numeric)",
+     "px": [
+      [
+       3325.4,
+       921.6
+      ],
+      [
+       3325.4,
+       836.5
+      ]
+     ]
+    },
+    {
+     "hash": "59f73d3015f3",
+     "reason": "P5-T: stall T-stub without render (numeric)",
+     "px": [
+      [
+       3389.4,
+       1130.7
+      ],
+      [
+       3389.4,
+       1026.0
+      ]
+     ]
+    },
+    {
+     "hash": "0f0631402f2d",
+     "reason": "P5-T: double-drawn N601 door (numeric: no 5th jamb in render)",
+     "px": [
+      [
+       3591.7,
+       1582.4
+      ],
+      [
+       3591.7,
+       1399.7
+      ]
+     ]
+    },
+    {
+     "hash": "4704e3c2b4f7",
+     "reason": "P5-T: no render match (numeric)",
+     "px": [
+      [
+       6274.9,
+       964.9
+      ],
+      [
+       6274.9,
+       890.7
+      ]
+     ]
+    },
+    {
+     "hash": "63548a2ea93c",
+     "reason": "P5-T: E-room furniture line (numeric)",
+     "px": [
+      [
+       6633.4,
+       716.3
+      ],
+      [
+       6739.4,
+       716.3
+      ]
+     ]
+    },
+    {
+     "hash": "6376dc41e1c6",
+     "reason": "P5-T: west vertical, zero render match (numeric)",
+     "px": [
+      [
+       1394.2,
+       617.9
+      ],
+      [
+       1394.2,
+       514.0
+      ]
+     ]
+    },
+    {
+     "hash": "17406d4b64c1",
+     "reason": "P5-T: dup of w6 (identical snapped line)",
+     "px": [
+      [
+       2754.5,
+       1654.4
+      ],
+      [
+       3879.5,
+       1654.4
+      ]
+     ]
+    },
+    {
+     "hash": "d47ccf684012",
+     "reason": "P5-T: dup of w12 (snapped lines 8px apart)",
+     "px": [
+      [
+       3876.0,
+       1429.5
+      ],
+      [
+       4373.5,
+       1429.5
+      ]
+     ]
+    },
+    {
+     "hash": "9fa19a0a3299",
+     "reason": "P5-T: dup of w13 (snapped lines 2px apart)",
+     "px": [
+      [
+       5485.2,
+       1429.5
+      ],
+      [
+       6186.5,
+       1429.5
+      ]
+     ]
+    },
+    {
+     "hash": "7de82e0f2412",
+     "reason": "P5-T: elevator stub (tile visual)",
+     "px": [
+      [
+       4304.8,
+       635.7
+      ],
+      [
+       4304.8,
+       530.2
+      ]
+     ]
+    },
+    {
+     "hash": "c349a4d2df62",
+     "reason": "P5-T: elevator piece, no render",
+     "px": [
+      [
+       3939.6,
+       636.0
+      ],
+      [
+       3939.6,
+       530.5
+      ]
+     ]
+    },
+    {
+     "hash": "a3cc674baca1",
+     "reason": "P5-T: west horizontal, zero render match (numeric)",
+     "px": [
+      [
+       1392.6,
+       616.4
+      ],
+      [
+       1486.9,
+       616.4
+      ]
+     ]
+    },
+    {
+     "hash": "50ebfa8e68b0",
+     "reason": "P5-T: void phantom (tile visual: floats in white void)",
+     "px": [
+      [
+       298.6,
+       512.8
+      ],
+      [
+       1396.2,
+       512.8
+      ]
+     ]
+    },
+    {
+     "hash": "256e2f3ec496",
+     "reason": "P5-T: void phantom (tile visual)",
+     "px": [
+      [
+       3905.4,
+       512.8
+      ],
+      [
+       4337.4,
+       512.8
+      ]
+     ]
+    },
+    {
+     "hash": "a2b2d737669f",
+     "reason": "P5-T: desk-zone phantom, demolished/furniture (tile visual)",
+     "px": [
+      [
+       329.7,
+       538.5
+      ],
+      [
+       1373.8,
+       538.5
+      ]
+     ]
+    },
+    {
+     "hash": "505b6abab7f0",
+     "reason": "P5-T: open-floor phantom (tile visual)",
+     "px": [
+      [
+       3905.4,
+       647.3
+      ],
+      [
+       4337.4,
+       647.3
+      ]
+     ]
+    },
+    {
+     "hash": "eb246ffa5003",
+     "reason": "P5-T: stair-railing depiction differs; no 1:1 twin (tile visual)",
+     "px": [
+      [
+       657.5,
+       795.0
+      ],
+      [
+       959.9,
+       795.0
+      ]
+     ]
+    },
+    {
+     "hash": "4cc65d6419a4",
+     "reason": "P5-T: void phantom (tile visual)",
+     "px": [
+      [
+       3940.4,
+       479.7
+      ],
+      [
+       4305.6,
+       479.7
+      ]
+     ]
+    }
+   ],
+   "shifts": {
+    "a9be9abb6663": {
+     "wall_index": 4,
+     "dx": -39.0,
+     "dy": -0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -39px)",
+     "px": [
+      [
+       4388.8,
+       1628.4
+      ],
+      [
+       4388.8,
+       1395.9
+      ]
+     ]
+    },
+    "f74b07871186": {
+     "wall_index": 5,
+     "dx": -59.0,
+     "dy": -0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -59px)",
+     "px": [
+      [
+       4388.8,
+       1292.3
+      ],
+      [
+       4388.8,
+       840.2
+      ]
+     ]
+    },
+    "0c6c133ee07e": {
+     "wall_index": 6,
+     "dx": -0.0,
+     "dy": 48.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +48px)",
+     "px": [
+      [
+       2780.8,
+       1622.4
+      ],
+      [
+       3843.8,
+       1622.4
+      ]
+     ]
+    },
+    "3207db8f1724": {
+     "wall_index": 7,
+     "dx": -0.0,
+     "dy": 11.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +11px)",
+     "px": [
+      [
+       4392.0,
+       1622.4
+      ],
+      [
+       5455.0,
+       1622.4
+      ]
+     ]
+    },
+    "05102014a58b": {
+     "wall_index": 9,
+     "dx": 0.0,
+     "dy": -13.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -13px)",
+     "px": [
+      [
+       1339.2,
+       1400.5
+      ],
+      [
+       2986.6,
+       1400.5
+      ]
+     ]
+    },
+    "b61972ac5cb7": {
+     "wall_index": 10,
+     "dx": 0.0,
+     "dy": -13.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -13px)",
+     "px": [
+      [
+       3112.2,
+       1400.5
+      ],
+      [
+       3344.3,
+       1400.5
+      ]
+     ]
+    },
+    "0c11a4e9eeca": {
+     "wall_index": 11,
+     "dx": 0.0,
+     "dy": -13.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -13px)",
+     "px": [
+      [
+       3471.5,
+       1400.5
+      ],
+      [
+       3773.1,
+       1400.5
+      ]
+     ]
+    },
+    "7d104609e8f0": {
+     "wall_index": 12,
+     "dx": 0.0,
+     "dy": -7.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -7px)",
+     "px": [
+      [
+       3850.5,
+       1400.5
+      ],
+      [
+       4404.5,
+       1400.5
+      ]
+     ]
+    },
+    "aa17c982c1ae": {
+     "wall_index": 13,
+     "dx": 0.0,
+     "dy": -13.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -13px)",
+     "px": [
+      [
+       5455.0,
+       1400.5
+      ],
+      [
+       6164.9,
+       1400.5
+      ]
+     ]
+    },
+    "d35086fa3d21": {
+     "wall_index": 14,
+     "dx": -78.0,
+     "dy": -0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -78px)",
+     "px": [
+      [
+       3853.6,
+       1292.3
+      ],
+      [
+       3853.6,
+       840.2
+      ]
+     ]
+    },
+    "14ba4aa24f9a": {
+     "wall_index": 20,
+     "dx": 0.0,
+     "dy": -23.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -23px)",
+     "px": [
+      [
+       1945.5,
+       1287.4
+      ],
+      [
+       3224.5,
+       1287.4
+      ]
+     ]
+    },
+    "05710da9a025": {
+     "wall_index": 21,
+     "dx": 0.0,
+     "dy": -23.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -23px)",
+     "px": [
+      [
+       3322.3,
+       1287.4
+      ],
+      [
+       3736.2,
+       1287.4
+      ]
+     ]
+    },
+    "05cb53c043ba": {
+     "wall_index": 22,
+     "dx": 0.0,
+     "dy": -24.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -24px)",
+     "px": [
+      [
+       3850.8,
+       1287.4
+      ],
+      [
+       4661.3,
+       1287.4
+      ]
+     ]
+    },
+    "b6b458d200f0": {
+     "wall_index": 23,
+     "dx": 0.0,
+     "dy": -24.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -24px)",
+     "px": [
+      [
+       6158.6,
+       1287.4
+      ],
+      [
+       6632.6,
+       1287.4
+      ]
+     ]
+    },
+    "cf9c9473059c": {
+     "wall_index": 25,
+     "dx": 0.0,
+     "dy": -77.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -77px)",
+     "px": [
+      [
+       1947.1,
+       850.8
+      ],
+      [
+       3223.7,
+       850.8
+      ]
+     ]
+    },
+    "e2e7fe9f8cd1": {
+     "wall_index": 26,
+     "dx": 0.0,
+     "dy": -81.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -81px)",
+     "px": [
+      [
+       3876.8,
+       850.8
+      ],
+      [
+       4356.6,
+       850.8
+      ]
+     ]
+    },
+    "4e72ac9f563e": {
+     "wall_index": 27,
+     "dx": 0.0,
+     "dy": -55.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -55px)",
+     "px": [
+      [
+       6162.6,
+       850.8
+      ],
+      [
+       6278.4,
+       850.8
+      ]
+     ]
+    },
+    "9d90f8a0ce3e": {
+     "wall_index": 28,
+     "dx": -0.0,
+     "dy": 59.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +59px)",
+     "px": [
+      [
+       6625.5,
+       850.8
+      ],
+      [
+       6739.4,
+       850.8
+      ]
+     ]
+    },
+    "7894ff165cab": {
+     "wall_index": 29,
+     "dx": -8.0,
+     "dy": -0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -8px)",
+     "px": [
+      [
+       3218.2,
+       1291.6
+      ],
+      [
+       3218.2,
+       836.8
+      ]
+     ]
+    },
+    "ef3e7a0afa9f": {
+     "wall_index": 30,
+     "dx": -90.0,
+     "dy": -0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -90px)",
+     "px": [
+      [
+       3730.3,
+       1288.2
+      ],
+      [
+       3730.3,
+       836.1
+      ]
+     ]
+    },
+    "e85b98d7d6f9": {
+     "wall_index": 31,
+     "dx": -33.0,
+     "dy": -0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -33px)",
+     "px": [
+      [
+       4655.1,
+       1288.2
+      ],
+      [
+       4655.1,
+       836.1
+      ]
+     ]
+    },
+    "fa54ffa973f1": {
+     "wall_index": 41,
+     "dx": -0.0,
+     "dy": 20.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +20px)",
+     "px": [
+      [
+       337.5,
+       1701.1
+      ],
+      [
+       1027.1,
+       1701.1
+      ]
+     ]
+    },
+    "c574f28bcb5f": {
+     "wall_index": 43,
+     "dx": 0.0,
+     "dy": -53.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -53px)",
+     "px": [
+      [
+       6159.4,
+       578.0
+      ],
+      [
+       6278.4,
+       578.0
+      ]
+     ]
+    },
+    "ed1a6568517e": {
+     "wall_index": 44,
+     "dx": 0.0,
+     "dy": -100.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -100px)",
+     "px": [
+      [
+       6626.3,
+       578.0
+      ],
+      [
+       7374.8,
+       578.0
+      ]
+     ]
+    },
+    "b607844ae8eb": {
+     "wall_index": 45,
+     "dx": 0.0,
+     "dy": -58.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -58px)",
+     "px": [
+      [
+       6157.1,
+       968.7
+      ],
+      [
+       6748.5,
+       968.7
+      ]
+     ]
+    },
+    "71f1f102a3d2": {
+     "wall_index": 46,
+     "dx": 86.0,
+     "dy": 0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +86px)",
+     "px": [
+      [
+       6627.9,
+       792.8
+      ],
+      [
+       6627.9,
+       633.0
+      ]
+     ]
+    },
+    "aecbefca911e": {
+     "wall_index": 49,
+     "dx": 0.0,
+     "dy": -46.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -46px)",
+     "px": [
+      [
+       3445.2,
+       1082.1
+      ],
+      [
+       3733.0,
+       1082.1
+      ]
+     ]
+    },
+    "eeaf1d85d39f": {
+     "wall_index": 52,
+     "dx": -0.0,
+     "dy": 18.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +18px)",
+     "px": [
+      [
+       3322.7,
+       1018.4
+      ],
+      [
+       3448.0,
+       1018.4
+      ]
+     ]
+    },
+    "afec91e76993": {
+     "wall_index": 54,
+     "dx": 11.0,
+     "dy": 0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +11px)",
+     "px": [
+      [
+       3325.4,
+       1088.9
+      ],
+      [
+       3325.4,
+       1014.7
+      ]
+     ]
+    },
+    "a9d0d9f5b175": {
+     "wall_index": 57,
+     "dx": -72.0,
+     "dy": -0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -72px)",
+     "px": [
+      [
+       942.2,
+       1215.9
+      ],
+      [
+       942.2,
+       789.0
+      ]
+     ]
+    },
+    "aad044cfa20e": {
+     "wall_index": 58,
+     "dx": 29.0,
+     "dy": 0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +29px)",
+     "px": [
+      [
+       1345.1,
+       1470.5
+      ],
+      [
+       1345.1,
+       1395.9
+      ]
+     ]
+    },
+    "9343838d1237": {
+     "wall_index": 59,
+     "dx": 0.0,
+     "dy": -67.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -67px)",
+     "px": [
+      [
+       3321.1,
+       885.1
+      ],
+      [
+       3736.6,
+       885.1
+      ]
+     ]
+    },
+    "12aa50c0912f": {
+     "wall_index": 60,
+     "dx": 0.0,
+     "dy": -76.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -76px)",
+     "px": [
+      [
+       3851.2,
+       840.6
+      ],
+      [
+       4661.7,
+       840.6
+      ]
+     ]
+    },
+    "d0d247ea0258": {
+     "wall_index": 61,
+     "dx": 59.0,
+     "dy": 0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +59px)",
+     "px": [
+      [
+       3049.4,
+       1578.7
+      ],
+      [
+       3049.4,
+       1395.9
+      ]
+     ]
+    },
+    "dc98bbd96058": {
+     "wall_index": 62,
+     "dx": 67.0,
+     "dy": 0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +67px)",
+     "px": [
+      [
+       3228.4,
+       1578.7
+      ],
+      [
+       3228.4,
+       1395.9
+      ]
+     ]
+    },
+    "742e8e6f02ed": {
+     "wall_index": 63,
+     "dx": 88.0,
+     "dy": 0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +88px)",
+     "px": [
+      [
+       3405.2,
+       1578.7
+      ],
+      [
+       3405.2,
+       1395.9
+      ]
+     ]
+    },
+    "fe81e48232e9": {
+     "wall_index": 65,
+     "dx": 84.0,
+     "dy": 0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +84px)",
+     "px": [
+      [
+       6161.0,
+       1399.7
+      ],
+      [
+       6161.0,
+       1353.7
+      ]
+     ]
+    },
+    "42a3074aaffd": {
+     "wall_index": 66,
+     "dx": 58.0,
+     "dy": 0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +58px)",
+     "px": [
+      [
+       6161.0,
+       1293.1
+      ],
+      [
+       6161.0,
+       1039.5
+      ]
+     ]
+    },
+    "f2175ec50ad1": {
+     "wall_index": 67,
+     "dx": 58.0,
+     "dy": 0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +58px)",
+     "px": [
+      [
+       6161.0,
+       974.7
+      ],
+      [
+       6161.0,
+       572.4
+      ]
+     ]
+    },
+    "3d3c6b004b51": {
+     "wall_index": 68,
+     "dx": 58.0,
+     "dy": 0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +58px)",
+     "px": [
+      [
+       6161.0,
+       513.2
+      ],
+      [
+       6161.0,
+       278.5
+      ]
+     ]
+    },
+    "9cfef937fd86": {
+     "wall_index": 71,
+     "dx": -0.0,
+     "dy": 20.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +20px)",
+     "px": [
+      [
+       6161.0,
+       716.3
+      ],
+      [
+       6276.5,
+       716.3
+      ]
+     ]
+    },
+    "8f935d5c5406": {
+     "wall_index": 74,
+     "dx": 0.0,
+     "dy": -47.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -47px)",
+     "px": [
+      [
+       1622.4,
+       1434.0
+      ],
+      [
+       2758.4,
+       1434.0
+      ]
+     ]
+    },
+    "113cdb603170": {
+     "wall_index": 76,
+     "dx": -0.0,
+     "dy": 12.0,
+     "reason": "P5-T snap to rendered twin (plateau-center +12px)",
+     "px": [
+      [
+       4370.0,
+       1654.4
+      ],
+      [
+       5488.3,
+       1654.4
+      ]
+     ]
+    },
+    "5000e72304ed": {
+     "wall_index": 79,
+     "dx": -50.0,
+     "dy": -0.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -50px)",
+     "px": [
+      [
+       4371.5,
+       1654.4
+      ],
+      [
+       4371.5,
+       1430.2
+      ]
+     ]
+    },
+    "a683f13d1cd8": {
+     "wall_index": 80,
+     "dx": 0.0,
+     "dy": -102.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -102px)",
+     "px": [
+      [
+       1484.1,
+       249.5
+      ],
+      [
+       3943.9,
+       249.5
+      ]
+     ]
+    },
+    "f6527bbc6686": {
+     "wall_index": 81,
+     "dx": 0.0,
+     "dy": -102.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -102px)",
+     "px": [
+      [
+       4302.0,
+       249.5
+      ],
+      [
+       7397.2,
+       249.5
+      ]
+     ]
+    },
+    "04e92e388e71": {
+     "wall_index": 86,
+     "dx": 0.0,
+     "dy": -52.0,
+     "reason": "P5-T snap to rendered twin (plateau-center -52px)",
+     "px": [
+      [
+       6186.5,
+       1315.3
+      ],
+      [
+       6653.8,
+       1315.3
+      ]
+     ]
+    }
+   },
+   "trims": {
+    "f2175ec50ad1": {
+     "wall_index": 67,
+     "keep": [
+      [
+       6219.0,
+       572.0
+      ],
+      [
+       6219.0,
+       918.0
+      ]
+     ],
+     "reason": "P5-T: extraction overextends 57px south into white lobby (numeric scan white 918-975); keep render span"
+    },
+    "960895bd08ad": {
+     "wall_index": 8,
+     "keep": [
+      [
+       335.0,
+       1400.0
+      ],
+      [
+       700.0,
+       1400.0
+      ]
+     ],
+     "reason": "P5-T: keep Fire-Exit-W corridor bit; east part floats (tile visual)"
+    },
+    "2241d70916c9": {
+     "wall_index": 33,
+     "keep": [
+      [
+       1021.0,
+       1465.0
+      ],
+      [
+       1116.0,
+       1465.0
+      ]
+     ],
+     "reason": "P5-T: keep stairwell corner bit (numeric dark 1006-1116); rest floats"
+    }
+   },
+   "splits": {
+    "b61972ac5cb7": {
+     "wall_index": 10,
+     "pieces": [
+      [
+       [
+        3112.0,
+        1387.0
+       ],
+       [
+        3232.0,
+        1387.0
+       ]
+      ],
+      [
+       [
+        3279.0,
+        1387.0
+       ],
+       [
+        3344.0,
+        1387.0
+       ]
+      ]
+     ],
+     "reason": "P5-T: N603 entry door (render white gap 3232-3279, numeric)"
+    }
+   }
+  }
+ }
+}

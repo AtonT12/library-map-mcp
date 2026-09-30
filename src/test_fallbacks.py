@@ -23,8 +23,8 @@ import mcp_server
 FROZEN = {
     "map_Resercher": 1483239,
     "same_W522": 1661805,
-    "cross_N607": [1627310, 1505030],
-    "cross_QA76": [1627310, 1505390],
+    "cross_N607": [1627310, 1540207],
+    "cross_QA76": [1627310, 1509434],
 }
 
 
@@ -93,8 +93,17 @@ def test_l4_errors():
 
 
 def test_transit_registration():
+    # Raw CSV coordinates (not _load_rows()): route_overrides.json
+    # intentionally repoints 6F stairs/transit plugs for walkability, so the
+    # effective coordinates drift by design. This probe guards the base maps
+    # themselves (re-crop / rescale), hence it reads the upstream data.
+    import csv
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "..", "locations.csv"),
+              encoding="utf-8-sig") as f:
+        rows = list(csv.DictReader(f))
     pts = {}
-    for r in library._load_rows():
+    for r in rows:
         if r["type"] == "Transit" and r.get("call_start"):
             pts.setdefault(r["call_start"], {})[r["floor"]] = (
                 int(r["x"]), int(r["y"]))

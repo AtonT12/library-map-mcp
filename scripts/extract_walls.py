@@ -43,6 +43,45 @@ C_TOL = 6.0             # pdf units: intercept tolerance for line clustering
 MIN_SEG_LEN = 4.0
 
 
+def seg_hash(a, b):
+    """Stable geometric key for one PDF-space wall segment (P4 human-review
+    override). Endpoint order is normalized and coordinates are rounded to
+    0.1, matching the merge output quantization, so the key survives re-runs
+    of the extractor unchanged."""
+    import hashlib
+    pa = (round(float(a[0]), 1), round(float(a[1]), 1))
+    pb = (round(float(b[0]), 1), round(float(b[1]), 1))
+    if pa > pb:
+        pa, pb = pb, pa
+    return hashlib.sha1(('%r|%r' % (pa, pb)).encode('ascii')).hexdigest()[:12]
+
+
+def default_review_override_path():
+    return os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), 'docs', 'wall_review_override.json')
+
+
+def load_review_override(path, floor):
+    """Load the P4 human-review removal set for one floor. Missing file means
+    no removals. Unreadable JSON fails fast: silently dropping review
+    decisions on re-runs is the failure mode this mechanism exists to prevent
+    (plan risk #5)."""
+    if not os.path.exists(path):
+        print('review override: no file at %s (nothing removed)' % path)
+        return set()
+    with open(path, encoding='utf-8') as f:
+        data = json.load(f)
+    removed = ((data.get('floors') or {}).get(floor) or {}).get('removed') or []
+    hashes = set()
+    for entry in removed:
+        h = entry.get('hash') if isinstance(entry, dict) else entry
+        if isinstance(h, str) and h:
+            hashes.add(h)
+    print('review override: %d removal(s) loaded for %s from %s'
+          % (len(hashes), floor, path))
+    return hashes
+
+
 def dist(ax, ay, bx, by):
     return math.hypot(bx - ax, by - ay)
 
@@ -402,6 +441,9 @@ def main():
     ap.add_argument('--out-dir', required=True)
     ap.add_argument('--transform', default=None,
                     help='JSON {sx,sy,px0,py0,pdf_rect:[rx0,ry0,...]} from P3')
+    ap.add_argument('--review-override', default=None,
+                    help='P4 human-review removal file (default: '
+                         'docs/wall_review_override.json)')
     args = ap.parse_args()
     try:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -450,6 +492,25 @@ def main():
 
     in_sheet = [(a, b) for a, b in merged if inside(a) and inside(b)]
     n_outsheet = len(merged) - len(in_sheet)
+    review_path = args.review_override or default_review_override_path()
+    review_hashes = load_review_override(review_path, args.floor)
+    review_removed = []
+    if review_hashes:
+        kept = []
+        for a, b in in_sheet:
+            h = seg_hash(a, b)
+            if h in review_hashes:
+                review_removed.append(h)
+            else:
+                kept.append((a, b))
+        in_sheet = kept
+        print('review override: removed %d segment(s), %d wall(s) remain'
+              % (len(review_removed), len(in_sheet)))
+        unmatched = sorted(review_hashes - set(review_removed))
+        if unmatched:
+            print('review override WARNING: %d hash(es) matched nothing '
+                  '(typo or stale geometry?): %s'
+                  % (len(unmatched), ', '.join(unmatched)))
     doors = [d for d in doors
              if wx0 - pad <= d['position'][0] <= wx1 + pad
              and wy0 - pad <= d['position'][1] <= wy1 + pad]
@@ -528,6 +589,8 @@ def main():
             'stroke_dup_dropped': n_dropped,
             'merged_runs': len(merged),
             'runs_out_of_sheet_dropped': n_outsheet,
+            'review_removed': len(review_removed),
+            'review_removed_hashes': review_removed,
             'final_wall_segments': len(walls_pdf),
             'door_gaps': len(doors),
         },

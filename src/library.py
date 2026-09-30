@@ -4,6 +4,7 @@ import hashlib
 import heapq
 import io
 import json
+import math
 import os
 import re
 import sys
@@ -68,6 +69,15 @@ FLOOR_PREFIX_RE = re.compile(r'^[56]F\s+')
 SAMPLE_STEP = 150        # spacing of branch-off candidates along each spine edge
 CONNECTOR_SLACK = 400    # accept visible connectors up to this much longer than the shortest
 WALL_PENALTY = 1000      # cost multiplier for a segment that crosses a wall
+# P5: walls count inflated by clearance in visibility/graph checks below.
+# Same value and meaning as WALL_CLEARANCE_PX in src/test.py (kept in sync
+# by hand; the test asserts inner route segments stay this far from walls).
+WALL_CLEARANCE_PX = 6
+# P5: endpoint epsilon — connectors may graze (not cross) walls within this
+# distance of a route endpoint (room entries sit in door gaps by design).
+# Must stay below the narrowest real doorway half-width (24.4px, 6F
+# calib_report) so it can never punch through a wall beside a door.
+ENDPOINT_EPS = 12
 
 
 def _xy(v):
@@ -473,6 +483,51 @@ def _blocked(floor, a, b):
                for w1, w2 in CORRIDORS[floor].get("walls", []))
 
 
+def _seg_wall_dist(floor, a, b):
+    """Minimum distance from segment a-b to any wall on `floor`
+    (proper crossings read as 0.0)."""
+    best = float("inf")
+    for w1, w2 in CORRIDORS[floor].get("walls", []):
+        if _segments_cross(a, b, tuple(w1), tuple(w2)):
+            return 0.0
+        best = min(best, _pt_seg_dist(a, (tuple(w1)), (tuple(w2))),
+                   _pt_seg_dist(b, (tuple(w1)), (tuple(w2))),
+                   _pt_seg_dist(tuple(w1), a, b),
+                   _pt_seg_dist(tuple(w2), a, b))
+    return best
+
+
+def _pt_seg_dist(p, a, b):
+    px, py = p
+    ax, ay = a
+    bx, by = b
+    dx, dy = bx - ax, by - ay
+    l2 = dx * dx + dy * dy
+    t = 0.0 if l2 == 0 else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / l2))
+    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def _blocked_clear(floor, a, b):
+    """P5 clearance-aware block test: proper crossing OR approach within
+    WALL_CLEARANCE_PX. Routing visibility and graph costs use this; the raw
+    geometric crossing test stays in _blocked (tests assert on it)."""
+    if _blocked(floor, a, b):
+        return True
+    return _seg_wall_dist(floor, a, b) < WALL_CLEARANCE_PX
+
+
+def _blocked_beyond(floor, a, b, eps):
+    """Like _blocked_clear but ignoring everything within `eps` of `a`
+    (endpoint epsilon exemption: grazes near a room entry, never crossings
+    further out — callers must still require a clear remainder)."""
+    d = _dist(a, b)
+    if d <= eps:
+        return False
+    t = eps / d
+    c = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+    return _blocked_clear(floor, c, b)
+
+
 def _dijkstra(adj, start, end):
     """Shortest path over {node: [(neighbor, cost)]}; returns the node list or None."""
     dist = {start: 0.0}
@@ -496,7 +551,7 @@ def _dijkstra(adj, start, end):
     return None
 
 
-def _path_points(floor, start_xy, end_xy):
+def _path_points(floor, start_xy, end_xy, diag=None):
     """Build the full route polyline on a single floor, respecting walls.
 
     The spine is densified: every edge is split at evenly spaced sample points
@@ -507,6 +562,12 @@ def _path_points(floor, start_xy, end_xy):
     across open floor. Spine segments that cross a wall stay usable but carry a
     heavy penalty, so an incomplete wall set never disconnects the route.
     Dijkstra over this graph yields the path.
+
+    The optional `diag` dict receives P5 penalty diagnostics (plan section
+    2.4) without changing the return type: penalty_edges (C2: penalized
+    inner segments plus one per endpoint fallback), end_fallback (C3),
+    graph_fallback (C3b), epsilon_used. First/last polyline segments are
+    excluded from the edge count, mirroring the test's inner-segment rule.
     """
     _maybe_reload_corridors()
     info = CORRIDORS[floor]
@@ -521,7 +582,7 @@ def _path_points(floor, start_xy, end_xy):
 
     def seg_cost(p, q):
         d = _dist(p, q)
-        return d * WALL_PENALTY if _blocked(floor, p, q) else d
+        return d * WALL_PENALTY if _blocked_clear(floor, p, q) else d
 
     # Densify spine edges into chains of short segments.
     seq = 0
@@ -547,47 +608,69 @@ def _path_points(floor, start_xy, end_xy):
     spine_ids = [n for n in nodes if n in adj] or list(wps)
 
     def connect(anchor, xy):
-        """Link `anchor` to the nearest visible point of each nearby spine edge;
-        return the shortest visible connector length (or None).
+        """Link `anchor` to the nearest visible point of each nearby spine edge.
 
-        One connector per edge keeps the route from cutting diagonally along
-        the corridor it joins; several edges let it pick the right corridor.
+        Returns (best, eps_used, fell_back): the shortest admitted connector
+        length (or None), whether the endpoint-epsilon exemption was used,
+        and whether nothing was even admissible (penalized fallback).
+
+        Admission is proper-crossing-free (a room entry must reach the
+        corridor through a doorway, grazing jambs if it must); clearance
+        violations on this endpoint hop only raise its cost, mirroring the
+        test's first/last-segment exemption. Sustained clearance discipline
+        lives in seg_cost, not here. One connector per edge keeps the route
+        from cutting diagonally along the corridor it joins.
         """
         nodes[anchor] = xy
         ranked = sorted(spine_ids, key=lambda n: _dist(xy, nodes[n]))
         best = None
         joined = set()
+        eps_used = False
         for n in ranked:
             d = _dist(xy, nodes[n])
             if best is not None and d > best + CONNECTOR_SLACK:
                 break
             if group.get(n) in joined:
                 continue
-            if not _blocked(floor, xy, nodes[n]):
-                best = d if best is None else best
-                joined.add(group.get(n))
-                link(anchor, n, d)
+            if _blocked(floor, xy, nodes[n]):
+                continue
+            if _blocked_clear(floor, xy, nodes[n]):
+                if _blocked_beyond(floor, xy, nodes[n], ENDPOINT_EPS):
+                    cost = d * WALL_PENALTY
+                else:
+                    cost = d
+                    eps_used = True
+            else:
+                cost = d
+            best = d if best is None else best
+            joined.add(group.get(n))
+            link(anchor, n, cost)
+        fell_back = False
         if best is None and ranked:
-            # Nothing visible (walls enclose the point): fall back to the
+            # Nothing admissible (walls enclose the point): fall back to the
             # nearest spine point, penalized like any wall crossing.
             n = ranked[0]
             link(anchor, n, _dist(xy, nodes[n]) * WALL_PENALTY)
-        return best
+            fell_back = True
+        return best, eps_used, fell_back
 
     if not spine_ids:
         return [start_xy, end_xy] if start_xy != end_xy else [start_xy]
 
-    s_best = connect("__start__", start_xy)
-    e_best = connect("__end__", end_xy)
+    s_best, s_eps, s_fell = connect("__start__", start_xy)
+    e_best, e_eps, e_fell = connect("__end__", end_xy)
 
     # Two points closer to each other than to the corridor (e.g. neighbours in
     # the same room) may walk straight across when nothing blocks the way.
     direct = _dist(start_xy, end_xy)
     if (s_best is not None and e_best is not None and direct <= s_best + e_best
-            and not _blocked(floor, start_xy, end_xy)):
+            and not _blocked_clear(floor, start_xy, end_xy)):
         link("__start__", "__end__", direct)
 
-    route = _dijkstra(adj, "__start__", "__end__") or ["__start__", "__end__"]
+    route = _dijkstra(adj, "__start__", "__end__")
+    graph_fallback = route is None
+    if graph_fallback:
+        route = ["__start__", "__end__"]
     pts = [nodes[n] for n in route]
 
     # Collapse duplicates and the collinear sample points along straight runs.
@@ -603,6 +686,17 @@ def _path_points(floor, start_xy, end_xy):
                 out[-1] = p
                 continue
         out.append(p)
+    if diag is not None:
+        segs = list(zip(out, out[1:]))
+        inner = segs[1:-1] if len(segs) > 2 else []
+        penalized = sum(1 for a, b in inner if _blocked_clear(floor, a, b))
+        diag.update({
+            'penalty_edges': penalized + (1 if s_fell else 0)
+            + (1 if e_fell else 0),
+            'end_fallback': bool(s_fell or e_fell),
+            'graph_fallback': bool(graph_fallback),
+            'epsilon_used': bool(s_eps or e_eps),
+        })
     return out
 
 
@@ -725,13 +819,17 @@ def build_route(destination, start=None, accessible_only=False):
                 'legs': [{'floor': d_floor,
                           'map_file': CORRIDORS[d_floor]["map_file"],
                           'points': [d_xy, d_xy],
-                          'start_color': 'red', 'end_color': 'red'}],
+                          'start_color': 'red', 'end_color': 'red',
+                          'diag': {'penalty_edges': 0, 'end_fallback': False,
+                                   'graph_fallback': False,
+                                   'epsilon_used': False}}],
                 'transit': None, 'msg': msg}
 
     # Same floor: a single routed map. State plainly that the trip stays on one
     # floor so the answer never invents a stairs/elevator step.
     if s_floor == d_floor:
-        pts = _path_points(s_floor, s_xy, d_xy)
+        diag1 = {}
+        pts = _path_points(s_floor, s_xy, d_xy, diag1)
         msg = (f"'{src['name']}' and '{dest['name']}' are both on the {s_floor} "
                f"floor, so this is a single-floor walk -- no stairs or elevator "
                f"and no floor change are needed. Follow the route on the {s_floor} "
@@ -740,7 +838,8 @@ def build_route(destination, start=None, accessible_only=False):
                 'legs': [{'floor': s_floor,
                           'map_file': CORRIDORS[s_floor]["map_file"],
                           'points': pts,
-                          'start_color': 'green', 'end_color': 'red'}],
+                          'start_color': 'green', 'end_color': 'red',
+                          'diag': diag1}],
                 'transit': None, 'msg': msg}
 
     # Cross floor: route start -> nearest transit, then transit -> destination.
@@ -757,8 +856,9 @@ def build_route(destination, start=None, accessible_only=False):
     s_transit_xy = (int(s_transit['x']), int(s_transit['y']))
     d_transit_xy = (int(d_transit['x']), int(d_transit['y']))
 
-    pts1 = _path_points(s_floor, s_xy, s_transit_xy)
-    pts2 = _path_points(d_floor, d_transit_xy, d_xy)
+    diag1, diag2 = {}, {}
+    pts1 = _path_points(s_floor, s_xy, s_transit_xy, diag1)
+    pts2 = _path_points(d_floor, d_transit_xy, d_xy, diag2)
 
     direction = "up" if d_floor > s_floor else "down"
     msg = (f"'{src['name']}' is on {s_floor} and '{dest['name']}' is on {d_floor}, "
@@ -774,11 +874,13 @@ def build_route(destination, start=None, accessible_only=False):
             'legs': [{'floor': s_floor,
                       'map_file': CORRIDORS[s_floor]["map_file"],
                       'points': pts1,
-                      'start_color': 'green', 'end_color': 'red'},
+                      'start_color': 'green', 'end_color': 'red',
+                      'diag': diag1},
                      {'floor': d_floor,
                       'map_file': CORRIDORS[d_floor]["map_file"],
                       'points': pts2,
-                      'start_color': 'green', 'end_color': 'red'}],
+                      'start_color': 'green', 'end_color': 'red',
+                      'diag': diag2}],
             'transit': {'name': transit_name, 'from_floor': s_floor,
                         'to_floor': d_floor, 'direction': direction},
             'msg': msg}

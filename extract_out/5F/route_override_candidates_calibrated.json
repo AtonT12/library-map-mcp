@@ -1,0 +1,43 @@
+{
+ "floor": "5F",
+ "basis": "P3 calibrated transform (diag)",
+ "candidates": {
+  "reference-collection-east-5f": {
+   "old": [
+    4295,
+    1000
+   ],
+   "new": [
+    4305,
+    1000
+   ]
+  },
+  "digital-periodicals-5f": {
+   "old": [
+    4798,
+    576
+   ],
+   "new": [
+    4798,
+    580
+   ]
+  }
+ },
+ "flagged": [
+  {
+   "place_id": "reference-collection-east-5f",
+   "name": "Reference Collection (East)",
+   "old": [
+    4295,
+    1000
+   ],
+   "wall_index": 63,
+   "dist_before_px": 19.9,
+   "new": [
+    4305,
+    1000
+   ],
+   "needs_review": "chosen side still violates clearance"
+  }
+ ]
+}
