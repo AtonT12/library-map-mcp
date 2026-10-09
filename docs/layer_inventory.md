@@ -329,3 +329,19 @@ docs/wall_review_override.json (shifts/trims/splits + 37 removals),
 scripts/apply_wall_review.py (new), src/route_overrides.json (n603-6f),
 src/test_fallbacks.py (2 bytes + raw-CSV probe),
 extract_out/6F/walls_px_snapped.json (new), this §11.
+
+### P6 visual-review round (2026-09-30, user screenshots)
+
+**6F fan diagonals.** East-lobby spur dangled off wp1, forcing a V-detour
+(6100,1300)->(4498,678)->(6150,950) that sliced A-D shelves. Reconnected
+spur at wp2 (replaced wp1-wp27 with wp2-wp27, 39.9 px margin, shelf slicing
+gone); N606 legs now run south corridor + lobby walk + short connectors.
+
+**5F entrance-stairs diagonal.** Old mid-flight endpoint (4475,950) grazed
+stairwell wall corners; first fix candidate (stair foot south) crossed the
+west wall squarely and was reverted. Final: stairs_main-5f moved to the
+stair-hall north mouth (4400,740, render opening 4338-4462 verified); leg
+runs Entrance -> north lobby -> east through open floor (zero render-dark
+hits on the east segment; north segment only crosses label text). Transit
+usage unchanged (Central 110). Refroze cross_N607/cross_QA76 first legs
+(1627310->1626841) + N607 6F leg (1540207->1502592, spur reroute).
