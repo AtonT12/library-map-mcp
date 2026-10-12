@@ -174,10 +174,18 @@ def render_view_test():
 # Real-data wall tests. These assert properties of corridors.json itself and
 # of every route built from it, so they keep working unchanged when the wall
 # list grows from 8 hand-drawn segments to hundreds of extracted ones.
-# Budgets default to 0; raise them via env vars only while iterating on data.
+# Crossing/clearance budgets default to 0; raise them via env vars only while
+# iterating on data. The detour budget records today's documented residuals.
 # ---------------------------------------------------------------------------
 WALL_CLEARANCE_PX = 6        # interior route segments must stay this far from any wall
 SPINE_MIN_MARGIN_PX = 20     # spine edges must stay this far from any wall
+MIN_LEG_STRAIGHT_PX = 100.0  # legs shorter than this are exempt (guards div-by-zero)
+DETOUR_BUDGET_RATIO = float(os.environ.get("WALL_DETOUR_BUDGET_RATIO", "2.5"))
+# Documented residuals (2026-10-12b, sign-off pending). N606A/B/C (4.12/4.73/5.78)
+# and Phone Booth (3.52) sit north of a wall that runs unbroken x[6216,6755], and
+# their stairwell opens north only -- every legal path must round the wall end.
+# 5F Search Station (2.61) is a 159px straight line across the Reference block.
+DETOUR_BUDGET_DEFAULT = 6
 
 
 def _pt_seg_dist(p, a, b):
@@ -225,7 +233,9 @@ def all_locations_wall_test():
     crossing_budget = int(os.environ.get("WALL_CROSSING_BUDGET", "0"))
     clearance_budget = int(os.environ.get("WALL_CLEARANCE_BUDGET", "0"))
     rows = [r for r in library._load_rows() if r.get("type") != "Transit"]
-    crossing, tight, unresolved, total = [], [], [], 0
+    detour_budget = int(os.environ.get("WALL_DETOUR_BUDGET",
+                                    str(DETOUR_BUDGET_DEFAULT)))
+    crossing, tight, unresolved, far, total = [], [], [], [], 0
     for start in (None, "N607"):
         for row in rows:
             dest = row["name"]
@@ -238,6 +248,14 @@ def all_locations_wall_test():
             for leg in route["legs"]:
                 floor, pts = leg["floor"], _leg_points(leg)
                 walls = library.CORRIDORS[floor].get("walls", [])
+                # Per-leg detour ratio: a whole-route ratio lets good legs mask bad ones.
+                straight = math.hypot(pts[-1][0] - pts[0][0],
+                                      pts[-1][1] - pts[0][1])
+                if straight >= MIN_LEG_STRAIGHT_PX:
+                    length = sum(math.dist(a, b) for a, b in zip(pts, pts[1:]))
+                    ratio = length / straight
+                    if ratio > DETOUR_BUDGET_RATIO:
+                        far.append((start, dest, floor, round(ratio, 2)))
                 segs = list(zip(pts, pts[1:]))
                 hit = any(library._segments_cross(a, b, tuple(w[0]), tuple(w[1]))
                           for a, b in segs for w in walls)
@@ -251,10 +269,14 @@ def all_locations_wall_test():
     if unresolved:
         print(f"[warn] {len(unresolved)} names did not resolve: {unresolved[:5]}")
     print(f"routes checked: {total}; wall-crossing (penalized fallback): {len(crossing)}; "
-          f"under {WALL_CLEARANCE_PX}px clearance: {len(tight)}")
+          f"under {WALL_CLEARANCE_PX}px clearance: {len(tight)}; "
+          f"legs detouring >{DETOUR_BUDGET_RATIO}x: {len(far)}")
     assert len(crossing) <= crossing_budget, f"routes crossing walls: {crossing[:10]}"
     assert len(tight) <= clearance_budget, f"routes hugging walls: {tight[:10]}"
-    print("[ok] no route crosses or hugs a wall")
+    if far:
+        print(f"[warn] {len(far)} documented residual detours: {far}")
+    assert len(far) <= detour_budget, f"legs detouring >{DETOUR_BUDGET_RATIO}x: {far[:10]}"
+    print("[ok] no route crosses or hugs a wall, and none detours absurdly")
 
 
 if __name__ == "__main__":

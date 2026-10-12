@@ -23,8 +23,8 @@ import mcp_server
 FROZEN = {
     "map_Resercher": 1483239,
     "same_W522": 1661805,
-    "cross_N607": [1626841, 1502592],
-    "cross_QA76": [1626841, 1509434],
+    "cross_N607": [1626430, 1510300],
+    "cross_QA76": [1626430, 1507120],
 }
 
 

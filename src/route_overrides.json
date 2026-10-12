@@ -8,8 +8,8 @@
   310
  ],
  "stairs_main-6f": [
-  4450,
-  1330
+  4550,
+  790
  ],
  "stairs_west-6f": [
   770,
@@ -21,6 +21,10 @@
  ],
  "stairs_main-5f": [
   4400,
-  740
+  780
+ ],
+ "reference-collection-east-5f": [
+  4200,
+  1000
  ]
 }
