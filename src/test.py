@@ -185,7 +185,12 @@ DETOUR_BUDGET_RATIO = float(os.environ.get("WALL_DETOUR_BUDGET_RATIO", "2.5"))
 # and Phone Booth (3.52) sit north of a wall that runs unbroken x[6216,6755], and
 # their stairwell opens north only -- every legal path must round the wall end.
 # 5F Search Station (2.61) is a 159px straight line across the Reference block.
-DETOUR_BUDGET_DEFAULT = 6
+# Budget = 5 DISTINCT legs. `far` is deduped because the sweep iterates CSV
+# rows while build_route resolves a destination by NAME (find_location
+# near=start), so rows sharing a name (the two `Phone Booth` rows) collapse
+# to one leg; the sweep also under-covers multi-instance names for the same
+# reason (5F/6F Fire Exit x5/x4, Sound-isolating Earplugs x3).
+DETOUR_BUDGET_DEFAULT = 5
 
 
 def _pt_seg_dist(p, a, b):
@@ -266,6 +271,9 @@ def all_locations_wall_test():
                 if not hit and any(_seg_seg_dist(a, b, tuple(w[0]), tuple(w[1])) < WALL_CLEARANCE_PX
                                    for a, b in inner for w in walls):
                     tight.append((start, dest, floor))
+    # Same-name CSV rows collapse to one leg via find_location(near=start);
+    # count distinct legs so the budget is not spent on duplicate iterations.
+    far = list(dict.fromkeys(far))
     if unresolved:
         print(f"[warn] {len(unresolved)} names did not resolve: {unresolved[:5]}")
     print(f"routes checked: {total}; wall-crossing (penalized fallback): {len(crossing)}; "

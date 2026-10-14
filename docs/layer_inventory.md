@@ -3,6 +3,8 @@
 > Date: 2026-09-28 · Inputs: `maps/{5F,6F} …copy.ai` + `maps/{5f,6f}_base.jpg`
 > Tooling: `scripts/ai_layer_inventory.py`, `scripts/p15_wall_draft_score.py` (pure stdlib + Pillow, zero runtime deps)
 > Plan reference: `../WALL_EXTRACTION_PLAN.md` sections 3 P1 / P1.5; this document also amends several assumptions from its section 1.2.
+>
+> **注（2026-10-13）**：本文引用的若干调试叠加图（`debug_final.png`、`b3_rigid_overlay.png`、`b3_squash_diff.png`）已随多轮 debug 的过程产物清理删除；它们只是 P3 排查时的可视化证据，结论与数字（见 `calib_report.json` 等）仍在。
 
 ## 1. File structure facts (measured, supersede earlier byte-level probing)
 

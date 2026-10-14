@@ -42,6 +42,11 @@ WALL_RGB = (114, 111, 154)
 INK_TOL = 18
 INK_DARK = 180          # a pixel counts as "line ink" below this luminance
 PROFILE_RAD = 12        # perpendicular search radius for the profile pass
+# The 5F sheet also carries real wall/partition bands drawn in LIGHT GREY
+# (~luminance 198, e.g. the 15 px band under the hand-drawn wall at x~3097).
+# At the 6F-tuned 180 cutoff those read as "no ink" and the wall looks like a
+# phantom. 205 catches them; 6F is left untouched (verified 205 and 215 agree).
+INK_DARK_BY_FLOOR = {'5F': 205, '6F': INK_DARK}
 
 # Edges allowed to be non-axis-aligned. Purely visual spine shortcuts kept on
 # purpose; anything else being diagonal means the spine grew a fabricated edge.
@@ -115,6 +120,7 @@ def cmd_profile(args):
         cfg = load_corridors()[floor]
         gray = floor_image(cfg, 'L').load()
         W, H = floor_image(cfg, 'L').size
+        ink_dark = INK_DARK_BY_FLOOR.get(floor, INK_DARK)
         print('\n=== %s: %d walls, 21-point perpendicular ink profile ==='
               % (floor, len(cfg['walls'])))
         print('    ink%%  = share of samples with a line pixel within +-%d px of the '
@@ -145,7 +151,7 @@ def cmd_profile(args):
                             continue
                         v = gray[xx, yy]
                         best = max(best, v - c)
-                        if first is None and v < INK_DARK:
+                        if first is None and v < ink_dark:
                             first = jj
                 if first is not None:
                     hits += 1
@@ -169,6 +175,8 @@ def cmd_profile(args):
             rows.append((best_run * spacing, hit, depths[len(depths) // 2], off, i,
                          tuple(a), tuple(b), ln))
         rows.sort(key=lambda r: (-r[0], r[1]))
+        records = []
+        n_bare = 0
         for gap, hit, depth, off, i, a, b, ln in rows:
             tag = ''
             if hit < 0.8:
@@ -183,9 +191,28 @@ def cmd_profile(args):
                       % (i, hit * 100, gap, off, depth, ln,
                          a[0], a[1], b[0], b[1], tag))
             if hit < 0.8:
-                bad += 1
-        print('    -> %d/%d segments lack ink under the line'
-              % (bad, len(rows)))
+                n_bare += 1
+            records.append({'index': i, 'a': [a[0], a[1]], 'b': [b[0], b[1]],
+                            'length_px': round(ln, 1),
+                            'ink_pct': round(hit * 100, 1),
+                            'gap_px': round(gap, 1), 'off_px': off,
+                            'depth': round(depth, 1), 'tag': tag.strip()})
+        print('    -> %d/%d segments lack ink under the line (ink_dark=%d)'
+              % (n_bare, len(rows), ink_dark))
+        bad += n_bare
+        if args.emit_json:
+            out_dir = os.path.join(ROOT, 'extract_out', floor)
+            os.makedirs(out_dir, exist_ok=True)
+            payload = {'floor': floor, 'wall_count': len(cfg['walls']),
+                       'generated_by': 'dev/wall_audit.py profile --emit-json',
+                       'params': {'profile_rad': PROFILE_RAD, 'ink_dark': ink_dark,
+                                  'ink_tol': INK_TOL, 'wall_rgb': list(WALL_RGB)},
+                       'walls': records}
+            path = os.path.join(out_dir, 'wall_profile.json')
+            with open(path, 'w', encoding='utf-8', newline='\n') as f:
+                json.dump(payload, f, indent=1, ensure_ascii=False)
+                f.write('\n')
+            print('    wrote %s (%d walls)' % (path, len(records)))
     return 0
 
 
@@ -486,6 +513,8 @@ def main():
                     help='connect: required free clearance px')
     ap.add_argument('--snap-rad', type=int, default=4,
                     help='connect: search radius (cells) for a free cell')
+    ap.add_argument('--emit-json', action='store_true',
+                    help='profile: also write extract_out/<floor>/wall_profile.json')
     ap.add_argument('--verbose', action='store_true', help='profile: print every row')
     args = ap.parse_args()
     try:
