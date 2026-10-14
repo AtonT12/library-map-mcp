@@ -25,7 +25,7 @@ This project bridges the gap by:
 
 ## Roadmap
 - [x] Integration with official Chatbot via MCP Server (server side done;
-  host-side verification on Ask pending).
+  host-side verification on Ask pending). See `docs/RUNBOOK_ask-local-dev.md`.
 - [x] Mobile-friendly maps: WebP output, 1600 px cap, zoom tiles, prebuilt
   thumbnails (`scripts/build_static.py`).
 - [ ] Real-time emergency status updates: `get_library_status` reads the
