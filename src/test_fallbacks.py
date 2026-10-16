@@ -23,7 +23,7 @@ import mcp_server
 FROZEN = {
     "map_Resercher": 1483239,
     "same_W522": 1661805,
-    "cross_N607": [1626430, 1510300],
+    "cross_N607": [1626430, 1509219],  # refreeze 2026-10-15: 6F walls cleared + 5F #8 removed
     "cross_QA76": [1626430, 1507120],
 }
 

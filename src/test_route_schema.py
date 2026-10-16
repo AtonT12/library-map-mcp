@@ -162,9 +162,11 @@ def test_route_boundaries():
     r = library.get_route("N607", accessible_only=True)
     assert r.totals.step_free and r.totals.transits_used == ["Elevator"]
     r = library.get_route("N607")
-    # P4 merged 109 extracted walls into 6F: the unmapped-floor warning must
-    # no longer fire for 6F (it still fires for any floor with empty walls).
-    assert not any("6F" in w for w in r.warnings), r.warnings
+    # 6F walls were cleared for full manual re-authoring (2026-10-15): the
+    # unmapped-floor warning fires for 6F again until walls land. It must
+    # still stay silent for the mapped 5F leg.
+    assert any("6F" in w for w in r.warnings), r.warnings
+    assert not any(w.startswith("5F") for w in r.warnings), r.warnings
     for bad in (lambda: library.get_route("nonexistent-xyz"),
                 lambda: library.get_route("N607", start="nonexistent")):
         try:

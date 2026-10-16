@@ -303,7 +303,20 @@ def find_location(query, near=None):
     `near` is an optional (floor, x, y). When the query matches a Facility that
     exists in several places (e.g. restrooms on 5F and 6F) the instance nearest
     `near` is returned; naming a floor ("6F restroom") pins that one.
+
+    A stable place_id from search_locations (e.g. 'n607-6f') resolves
+    exactly to its row before any fuzzy strategy runs; identity pins the
+    instance, so `near` does not apply. Transit ids never resolve (routing
+    infrastructure, not lookup targets).
     """
+    raw_id = query.strip().lower()
+    if raw_id:
+        all_rows = _load_rows()
+        for r, pid in zip(all_rows, _assign_place_ids(all_rows)):
+            if pid == raw_id:
+                if r['type'].lower() == 'transit':
+                    return None
+                return r
     query = query.strip().upper()
     for pattern, repl in SYNONYMS:
         query = pattern.sub(repl, query)

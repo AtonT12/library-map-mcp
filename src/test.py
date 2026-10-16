@@ -181,15 +181,14 @@ WALL_CLEARANCE_PX = 6        # interior route segments must stay this far from a
 SPINE_MIN_MARGIN_PX = 20     # spine edges must stay this far from any wall
 MIN_LEG_STRAIGHT_PX = 100.0  # legs shorter than this are exempt (guards div-by-zero)
 DETOUR_BUDGET_RATIO = float(os.environ.get("WALL_DETOUR_BUDGET_RATIO", "2.5"))
-# Documented residuals (2026-10-12b, sign-off pending). N606A/B/C (4.12/4.73/5.78)
-# and Phone Booth (3.52) sit north of a wall that runs unbroken x[6216,6755], and
-# their stairwell opens north only -- every legal path must round the wall end.
-# 5F Search Station (2.61) is a 159px straight line across the Reference block.
-# Budget = 5 DISTINCT legs. `far` is deduped because the sweep iterates CSV
-# rows while build_route resolves a destination by NAME (find_location
-# near=start), so rows sharing a name (the two `Phone Booth` rows) collapse
-# to one leg; the sweep also under-covers multi-instance names for the same
-# reason (5F/6F Fire Exit x5/x4, Sound-isolating Earplugs x3).
+# Documented residuals. 6F walls were cleared for manual re-authoring
+# (2026-10-15), so the N606A/B/C + Phone Booth wall-rounding detours are
+# gone except Phone Booth (3.52), which persists wall-free: the spine
+# itself runs indirect there, not a wall penalty. 5F Search Station (2.61)
+# is a 159px straight line across the Reference block (5F walls intact).
+# Budget = 5 DISTINCT legs (headroom for walls landing again). The sweep
+# iterates place_ids (exact rows, no near=start collapsing); `far` is
+# deduped on (start, name, floor, ratio) for stable reporting.
 DETOUR_BUDGET_DEFAULT = 5
 
 
@@ -237,22 +236,37 @@ def all_locations_wall_test():
     print("\n--- Testing every location for wall crossings ---")
     crossing_budget = int(os.environ.get("WALL_CROSSING_BUDGET", "0"))
     clearance_budget = int(os.environ.get("WALL_CLEARANCE_BUDGET", "0"))
-    rows = [r for r in library._load_rows() if r.get("type") != "Transit"]
+    rows = library._load_rows()
+    # Sweep by stable place_id (not by name): find_location resolves an id
+    # to its exact row, so same-name rows (Phone Booth x2, Fire Exit x9,
+    # Sound-isolating Earplugs x3) are each covered once instead of
+    # collapsing to the instance nearest the start.
+    idmap = library._assign_place_ids(rows)
+    targets = [(pid, r) for r, pid in zip(rows, idmap)
+               if r.get("type") != "Transit"]
     detour_budget = int(os.environ.get("WALL_DETOUR_BUDGET",
                                     str(DETOUR_BUDGET_DEFAULT)))
-    crossing, tight, unresolved, far, total = [], [], [], [], 0
+    crossing, tight, unresolved, far, dirty, total = [], [], [], [], [], 0
     for start in (None, "N607"):
-        for row in rows:
-            dest = row["name"]
+        for pid, row in targets:
             try:
-                route = library.build_route(dest, start=start)
+                route = library.build_route(pid, start=start)
             except ValueError:
-                unresolved.append((start, dest))
+                unresolved.append((start, pid))
                 continue
             total += 1
             for leg in route["legs"]:
                 floor, pts = leg["floor"], _leg_points(leg)
                 walls = library.CORRIDORS[floor].get("walls", [])
+                # Router self-report: zero tolerance. Every leg must route
+                # without penalized edges or endpoint/graph fallbacks; this
+                # also covers short (<3 point) legs whose inner segment list
+                # is empty below.
+                diag = leg.get("diag", {})
+                if (diag.get("penalty_edges", 0) > 0
+                        or diag.get("end_fallback")
+                        or diag.get("graph_fallback")):
+                    dirty.append((start, pid, floor, dict(diag)))
                 # Per-leg detour ratio: a whole-route ratio lets good legs mask bad ones.
                 straight = math.hypot(pts[-1][0] - pts[0][0],
                                       pts[-1][1] - pts[0][1])
@@ -260,27 +274,27 @@ def all_locations_wall_test():
                     length = sum(math.dist(a, b) for a, b in zip(pts, pts[1:]))
                     ratio = length / straight
                     if ratio > DETOUR_BUDGET_RATIO:
-                        far.append((start, dest, floor, round(ratio, 2)))
+                        far.append((start, row["name"], floor, round(ratio, 2)))
                 segs = list(zip(pts, pts[1:]))
                 hit = any(library._segments_cross(a, b, tuple(w[0]), tuple(w[1]))
                           for a, b in segs for w in walls)
                 if hit:
-                    crossing.append((start, dest, floor))
+                    crossing.append((start, pid, floor))
                 # Skip first/last segment: room connectors legitimately touch door gaps.
                 inner = segs[1:-1]
                 if not hit and any(_seg_seg_dist(a, b, tuple(w[0]), tuple(w[1])) < WALL_CLEARANCE_PX
                                    for a, b in inner for w in walls):
-                    tight.append((start, dest, floor))
-    # Same-name CSV rows collapse to one leg via find_location(near=start);
-    # count distinct legs so the budget is not spent on duplicate iterations.
+                    tight.append((start, pid, floor))
+    # Distinct legs only, so the budget is not spent on duplicate iterations.
     far = list(dict.fromkeys(far))
-    if unresolved:
-        print(f"[warn] {len(unresolved)} names did not resolve: {unresolved[:5]}")
+    assert not unresolved, f"place_ids did not resolve: {unresolved[:5]}"
     print(f"routes checked: {total}; wall-crossing (penalized fallback): {len(crossing)}; "
           f"under {WALL_CLEARANCE_PX}px clearance: {len(tight)}; "
-          f"legs detouring >{DETOUR_BUDGET_RATIO}x: {len(far)}")
+          f"legs detouring >{DETOUR_BUDGET_RATIO}x: {len(far)}; "
+          f"legs with router-reported penalty/fallback: {len(dirty)}")
     assert len(crossing) <= crossing_budget, f"routes crossing walls: {crossing[:10]}"
     assert len(tight) <= clearance_budget, f"routes hugging walls: {tight[:10]}"
+    assert not dirty, f"legs paying wall penalty: {dirty[:10]}"
     if far:
         print(f"[warn] {len(far)} documented residual detours: {far}")
     assert len(far) <= detour_budget, f"legs detouring >{DETOUR_BUDGET_RATIO}x: {far[:10]}"

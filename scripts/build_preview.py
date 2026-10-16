@@ -25,8 +25,10 @@ OUT = os.path.join(BASE_DIR, 'dev', 'preview.html')
 
 def main():
     html = template.build_view_html()
-    with open(OUT, 'w', encoding='utf-8') as f:
-        f.write(html)
+    # Binary write: text mode lets Windows translate \n to \r\n, which breaks
+    # the byte-identity claim below against the LF served by the ui:// resource.
+    with open(OUT, 'wb') as f:
+        f.write(html.encode('utf-8'))
     print(f'{os.path.relpath(OUT, BASE_DIR).replace(os.sep, "/")}: '
           f'{len(html):,} bytes')
     return 0

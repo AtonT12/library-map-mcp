@@ -607,7 +607,7 @@ const View = (() => {
     const vh = (svg && svg.clientHeight) || 600;
     // Fit the union box at SQ tilt plus the 6F lift.
     const S = Math.min(vw / (UW * (1 + SH) + 1), (vh * 0.92) / (UH * SQ + 0.06 * UH + 1));
-    return { S, SQ, SH, UW, UH, z6: 0.06 * UH * S, thick: 0.012 * UH * S, vw, vh };
+    return { S, SQ, SH, UW, UH, z6: 0.06 * UH * S, thick: 0.012 * UH * S, lift: 0.02 * UH * S, vw, vh };
   }
 
   function project(x, y, z, P) {
@@ -652,37 +652,58 @@ const View = (() => {
     svg.textContent = "";
     svg.setAttribute("viewBox", `${x0.toFixed(1)} ${y0.toFixed(1)} ${(x1 - x0).toFixed(1)} ${(y1 - y0).toFixed(1)}`);
 
+    // v1 polish: slab gradient + soft shadow filter (single defs, rebuilt
+    // with every render since the svg is cleared above).
+    const defs = svgEl("defs", null, svg);
+    const grad = svgEl("linearGradient", { id: "slab3d", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+    svgEl("stop", { offset: 0, "stop-color": "#f4f6f8" }, grad);
+    svgEl("stop", { offset: 1, "stop-color": "#d7dde3" }, grad);
+    const filt = svgEl("filter", { id: "soft3d", x: "-40%", y: "-40%", width: "180%", height: "180%" }, defs);
+    svgEl("feGaussianBlur", { stdDeviation: 8 }, filt);
+
     const drawFloor = (leg, current) => {
       const m = mapInfo(leg.floor);
       if (!m) return;
       const z = zOf(leg);
       const g = svgEl("g", { opacity: current ? 1 : 0.45 }, svg);
       const slab = slabPolys(m.fw, m.fh, z, P);
-      svgEl("polygon", { points: ptsStr(slab.shadow), fill: "#000", opacity: 0.15 }, g);
+      svgEl("polygon", { points: ptsStr(slab.shadow), fill: "#000", opacity: 0.15, filter: "url(#soft3d)" }, g);
       slab.sides.forEach((s) => {
-        svgEl("polygon", { points: ptsStr(s), fill: "#9aa3ad", opacity: 0.85 }, g);
+        svgEl("polygon", { points: ptsStr(s), fill: "#8f99a3", opacity: 0.9 }, g);
       });
+      svgEl("polygon", { points: ptsStr(slab.top), fill: "url(#slab3d)", stroke: "#ffffff", "stroke-width": 2 }, g);
       const rg = svgEl("g", {
         transform: `matrix(${P.S} 0 ${(P.S * P.SH).toFixed(4)} ${(P.S * P.SQ).toFixed(4)} 0 ${(-z).toFixed(1)})`,
       }, g);
-      svgEl("image", { href: m.href, x: 0, y: 0, width: m.fw, height: m.fh }, rg);
+      svgEl("image", { href: m.href, x: 0, y: 0, width: m.fw, height: m.fh, opacity: 0.93 }, rg);
       const poly = Array.isArray(leg.polyline) ? leg.polyline : [];
       if (poly.length >= 2) {
-        svgEl("polyline", { points: poly3(poly, z, P), fill: "none", stroke: "white", "stroke-width": 7, "stroke-linejoin": "round" }, g);
-        svgEl("polyline", { points: poly3(poly, z, P), fill: "none", stroke: "#1E6FFF", "stroke-width": 4, "stroke-linejoin": "round" }, g);
+        const lift = P.lift || 0;
+        const flat = poly.map((p) => project(p[0], p[1], z, P));
+        const sh2 = flat.map(([x, y]) => [x + 9, y + 11]);
+        svgEl("polyline", { points: ptsStr(sh2), fill: "none", stroke: "#000", opacity: 0.3, "stroke-width": 10, "stroke-linejoin": "round", filter: "url(#soft3d)" }, g);
+        const up = poly.map((p) => project(p[0], p[1], z + lift, P));
+        svgEl("polyline", { points: ptsStr(up), fill: "none", stroke: "white", "stroke-width": 10, "stroke-linejoin": "round" }, g);
+        svgEl("polyline", { points: ptsStr(up), fill: "none", stroke: "#1E6FFF", "stroke-width": 5.5, "stroke-linejoin": "round" }, g);
       }
       const steps = Array.isArray(leg.steps) ? leg.steps : [];
+      const lift2 = P.lift || 0;
       const dot = (p, fill, title) => {
         if (!p) return;
-        const [sx, sy] = project(p[0], p[1], z, P);
-        const c = svgEl("circle", { cx: sx.toFixed(1), cy: sy.toFixed(1), r: 9, fill, stroke: "white", "stroke-width": 3 }, g);
+        const [sx, sy] = project(p[0], p[1], z + lift2, P);
+        const c = svgEl("circle", { cx: sx.toFixed(1), cy: sy.toFixed(1), r: 11, fill, stroke: "white", "stroke-width": 3.5 }, g);
         if (title) {
           const t = svgEl("title", null, c);
           t.textContent = title;
         }
       };
-      if (poly[0]) dot(poly[0], "green", (steps[0] || {}).label || "start");
-      if (poly[poly.length - 1]) dot(poly[poly.length - 1], "red", (steps[steps.length - 1] || {}).label || "end");
+      if (poly[0]) dot(poly[0], "#22a355", (steps[0] || {}).label || "start");
+      if (poly[poly.length - 1]) dot(poly[poly.length - 1], "#d33", (steps[steps.length - 1] || {}).label || "end");
+      // Floor plate (v1): dark chip with the floor name at the slab corner.
+      const corner = slab.top[0];
+      svgEl("rect", { x: (corner[0] - 8).toFixed(1), y: (corner[1] - 46).toFixed(1), width: 64, height: 36, rx: 7, fill: "#111", opacity: 0.85 }, g);
+      const plate = svgEl("text", { x: (corner[0] + 24).toFixed(1), y: (corner[1] - 19).toFixed(1), "font-size": 24, "font-weight": "bold", "text-anchor": "middle", fill: "#fff" }, g);
+      plate.textContent = leg.floor;
     };
 
     // Far-to-near: non-current floors first (6F is visually above: paint it
@@ -712,14 +733,18 @@ const View = (() => {
         svgEl("line", {
           x1: qA[0].toFixed(1), y1: qA[1].toFixed(1),
           x2: qB[0].toFixed(1), y2: qB[1].toFixed(1),
-          stroke: "#c00", "stroke-width": 5,
+          stroke: "#c00", "stroke-width": 7, "stroke-linecap": "round",
         }, cg);
+        [qA, qB].forEach((q) => {
+          svgEl("circle", { cx: q[0].toFixed(1), cy: q[1].toFixed(1), r: 9, fill: "#c00", stroke: "white", "stroke-width": 3 }, cg);
+        });
         const label = t ? (t.direction === "down"
           ? `↓ 下到 ${t.to_floor}` : `↑ 上到 ${t.to_floor}`) : "换层";
         const tx = svgEl("text", {
-          x: ((qA[0] + qB[0]) / 2 + 8).toFixed(1),
+          x: ((qA[0] + qB[0]) / 2 + 12).toFixed(1),
           y: ((qA[1] + qB[1]) / 2).toFixed(1),
-          "font-size": 22, fill: "#c00",
+          "font-size": 26, fill: "#c00", "font-weight": "bold",
+          stroke: "#fff", "stroke-width": 4, "paint-order": "stroke",
         }, cg);
         tx.textContent = label;
       }

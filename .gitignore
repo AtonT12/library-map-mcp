@@ -13,6 +13,11 @@ dev/preview.html
 # ones live in src/test_route_schema.py / dev/viewer.test.js instead.
 dev/fixtures/
 
+# Extraction intermediates (regenerable from maps/*.ai + docs/wall_review_override.json;
+# conclusions are recorded in docs/layer_inventory.md). Do not commit.
+extract_out/
+review_out/
+
 # VS Code: keep the shared MCP server wiring, drop personal editor state.
 # settings.json / launch.json routinely carry machine-absolute paths (venv
 # interpreter, debug cwd) -- exactly the leak .vscode/mcp.json was cleaned of
