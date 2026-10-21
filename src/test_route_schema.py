@@ -162,11 +162,17 @@ def test_route_boundaries():
     r = library.get_route("N607", accessible_only=True)
     assert r.totals.step_free and r.totals.transits_used == ["Elevator"]
     r = library.get_route("N607")
-    # 6F walls were cleared for full manual re-authoring (2026-10-15): the
-    # unmapped-floor warning fires for 6F again until walls land. It must
-    # still stay silent for the mapped 5F leg.
-    assert any("6F" in w for w in r.warnings), r.warnings
-    assert not any(w.startswith("5F") for w in r.warnings), r.warnings
+    # The "floor has no wall data" warning only fires for a floor whose
+    # corridors.json entry has an empty wall list. Both floors now carry
+    # hand-drawn walls, so no floor may raise it. (The previous version of
+    # this assertion expected the 6F warning, which was true only while 6F
+    # walls were cleared for re-authoring -- with walls in place it could
+    # never hold again.)
+    for floor in ("5F", "6F"):
+        assert library.CORRIDORS[floor].get("walls"), \
+            "%s must carry wall data for the warning rule to be meaningful" % floor
+    assert not any("未标注墙段" in w for w in r.warnings), r.warnings
+    assert not r.warnings, r.warnings
     for bad in (lambda: library.get_route("nonexistent-xyz"),
                 lambda: library.get_route("N607", start="nonexistent")):
         try:

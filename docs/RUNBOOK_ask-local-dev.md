@@ -133,7 +133,16 @@ PYTHONPATH=src ../.venv-daniel/Scripts/python.exe src/selfcheck.py
 node dev/viewer.test.js
 ```
 
-Gotchas: `test.py` is the heaviest (wall audit over ~220 routes); wall budgets are env vars keeping documented residuals — `WALL_CROSSING_BUDGET=0`, `WALL_CLEARANCE_BUDGET=0`, `WALL_DETOUR_BUDGET=5`. `test_fallbacks.py` includes **4 byte-frozen image lengths** — they must not change unless you intend a re-freeze. `test_route_schema.py` starts a real server on port **18083** and **temporarily renames** `corridors.json` + `maps/5f_base.jpg` (restored in `finally`) — never run it concurrently with other data-touching work. CI (`.github/workflows/test.yaml`) runs the three Python suites + viewer test + `docker build` on py3.11; dev-only auditors outside CI: `dev\wall_audit.py all` (wall audit), `dev\xcheck_raster.py` (independent raster cross-check of the vector wall tests — a disagreement between the two methods fails the run).
+Gotchas: `test.py` is the heaviest (wall audit over ~220 routes); wall budgets are env vars keeping documented residuals — `WALL_CROSSING_BUDGET=0`, `WALL_CLEARANCE_BUDGET=0`, `WALL_DETOUR_BUDGET=6`. `test_fallbacks.py` includes **4 byte-frozen image lengths** — they must not change unless you intend a re-freeze. `test_route_schema.py` starts a real server on port **18083** and **temporarily renames** `corridors.json` + `maps/5f_base.jpg` (restored in `finally`) — never run it concurrently with other data-touching work. CI (`.github/workflows/test.yaml`) runs the three Python suites + the viewer test + **two independent route auditors** + `docker build` on py3.11.
+
+The two auditors exist because a test that shares its implementation with the code under test cannot catch a shared mistake — they compute the same properties a second way and fail on any disagreement:
+
+| Tool | What it checks independently |
+|---|---|
+| `dev\xcheck_raster.py` | Wall crossings, computed on a full-resolution Pillow mask instead of the router's vector geometry. Any disagreement between the two methods fails the run. |
+| `dev\route_quality.py` | The four user-facing questions (see `ROUTE_QUALITY_SPEC.md`): **reachable** (free-space BFS — can a person get there at all), **walkable** (every segment of every route, including the two doorway connectors), **efficient** (route length vs the *shortest walkable path*, not vs a straight line through walls), **points** (is every marker somewhere a person can stand). ~50 s. |
+
+`dev\wall_audit.py all` is a third tool, for data inspection rather than gating: it profiles each wall segment against the ink in the base map (phantom / displaced / long bare runs) and reports spine orthogonality, coverage and sealed pockets.
 
 ---
 

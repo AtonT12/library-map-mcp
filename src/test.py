@@ -174,22 +174,39 @@ def render_view_test():
 # Real-data wall tests. These assert properties of corridors.json itself and
 # of every route built from it, so they keep working unchanged when the wall
 # list grows from 8 hand-drawn segments to hundreds of extracted ones.
-# Crossing/clearance budgets default to 0; raise them via env vars only while
-# iterating on data. The detour budget records today's documented residuals.
+#
+# The assertions are phrased the way a user experiences a route (see
+# ROUTE_QUALITY_SPEC.md):
+#   * no part of the line goes through a wall            (walkable)
+#   * no part of the line scrapes a wall, with only a
+#     LOCAL exemption right at the doorway step          (walkable)
+#   * the router never quietly charges itself a penalty  (honest)
+#   * the line does not wander off absurdly               (efficient)
+#
+# The authoritative efficiency measure (route length vs the shortest
+# WALKABLE path) lives in dev/route_quality.py -- it needs a free-space
+# search and is too slow for the CI gate. The ratio here is a cheap smoke
+# check against the straight line, with a deliberately generous budget.
 # ---------------------------------------------------------------------------
-WALL_CLEARANCE_PX = 6        # interior route segments must stay this far from any wall
+WALL_CLEARANCE_PX = 6        # a route segment must stay this far from any wall
 SPINE_MIN_MARGIN_PX = 20     # spine edges must stay this far from any wall
 MIN_LEG_STRAIGHT_PX = 100.0  # legs shorter than this are exempt (guards div-by-zero)
+# The doorway exemption is LOCAL: only the part of the first/last segment
+# within this distance of the endpoint is forgiven. The old test skipped the
+# whole first and last segment, which hid every real problem there -- and
+# the router's own penalty counter skipped the same segments, so neither
+# side of the test noticed.
+ENDPOINT_EPS_PX = 12
 DETOUR_BUDGET_RATIO = float(os.environ.get("WALL_DETOUR_BUDGET_RATIO", "2.5"))
-# Documented residuals. 6F walls were cleared for manual re-authoring
-# (2026-10-15), so the N606A/B/C + Phone Booth wall-rounding detours are
-# gone except Phone Booth (3.52), which persists wall-free: the spine
-# itself runs indirect there, not a wall penalty. 5F Search Station (2.61)
-# is a 159px straight line across the Reference block (5F walls intact).
-# Budget = 5 DISTINCT legs (headroom for walls landing again). The sweep
-# iterates place_ids (exact rows, no near=start collapsing); `far` is
-# deduped on (start, name, floor, ratio) for stable reporting.
-DETOUR_BUDGET_DEFAULT = 5
+# Documented residuals, as a cheap smoke bound only. The real efficiency
+# budget is dev/route_quality.py L3 (route length / shortest walkable
+# path), which is measured against what a person could actually walk.
+#
+# The sweep iterates place_ids (exact rows, no near=start collapsing), so
+# `far` is deduped on (start, place_id, floor, ratio). An earlier version
+# deduped on the NAME, which silently merged the two distinct "Phone
+# Booth" rows once the sweep started routing by id.
+DETOUR_BUDGET_DEFAULT = 6
 
 
 def _pt_seg_dist(p, a, b):
@@ -205,6 +222,42 @@ def _seg_seg_dist(a, b, c, d):
         return 0.0
     return min(_pt_seg_dist(a, c, d), _pt_seg_dist(b, c, d),
                _pt_seg_dist(c, a, b), _pt_seg_dist(d, a, b))
+
+
+def _clearance(floor, a, b, eps=0.0):
+    """Distance from segment a-b to the nearest wall, ignoring the parts of
+    the segment within `eps` of either endpoint.
+
+    The exemption is LOCAL by design: stepping through a doorway means the
+    first pixel or two grazes the jamb, and that is fine. Everything beyond
+    the doorway has to keep its distance. The previous version of this check
+    dropped the whole first/last segment, which let a route scrape along a
+    wall for its entire length without anybody noticing.
+    """
+    walls = library.CORRIDORS[floor].get("walls", [])
+    if not walls:
+        return float("inf")
+    ax, ay = float(a[0]), float(a[1])
+    bx, by = float(b[0]), float(b[1])
+    dx, dy = bx - ax, by - ay
+    l2 = dx * dx + dy * dy
+    if l2 == 0:
+        pts = [(ax, ay)]
+    else:
+        n = max(2, int(math.sqrt(l2) // 8) + 1)
+        pts = [(ax + dx * k / n, ay + dy * k / n) for k in range(n + 1)]
+    best = float("inf")
+    for px, py in pts:
+        if eps > 0:
+            if math.hypot(px - ax, py - ay) < eps:
+                continue
+            if math.hypot(px - bx, py - by) < eps:
+                continue
+        for w1, w2 in walls:
+            d = _pt_seg_dist((px, py), tuple(w1), tuple(w2))
+            if d < best:
+                best = d
+    return best
 
 
 def _leg_points(leg):
@@ -267,25 +320,34 @@ def all_locations_wall_test():
                         or diag.get("end_fallback")
                         or diag.get("graph_fallback")):
                     dirty.append((start, pid, floor, dict(diag)))
-                # Per-leg detour ratio: a whole-route ratio lets good legs mask bad ones.
+                # Per-leg detour ratio: a whole-route ratio lets good legs
+                # mask bad ones. This is a cheap smoke bound only -- the
+                # authoritative measure is dev/route_quality.py L3.
                 straight = math.hypot(pts[-1][0] - pts[0][0],
                                       pts[-1][1] - pts[0][1])
                 if straight >= MIN_LEG_STRAIGHT_PX:
                     length = sum(math.dist(a, b) for a, b in zip(pts, pts[1:]))
                     ratio = length / straight
                     if ratio > DETOUR_BUDGET_RATIO:
-                        far.append((start, row["name"], floor, round(ratio, 2)))
+                        far.append((start, pid, floor, round(ratio, 2)))
                 segs = list(zip(pts, pts[1:]))
+                # A route that crosses a wall is never walkable, and this
+                # holds for EVERY segment including the first and last.
                 hit = any(library._segments_cross(a, b, tuple(w[0]), tuple(w[1]))
                           for a, b in segs for w in walls)
                 if hit:
                     crossing.append((start, pid, floor))
-                # Skip first/last segment: room connectors legitimately touch door gaps.
-                inner = segs[1:-1]
-                if not hit and any(_seg_seg_dist(a, b, tuple(w[0]), tuple(w[1])) < WALL_CLEARANCE_PX
-                                   for a, b in inner for w in walls):
-                    tight.append((start, pid, floor))
+                # Clearance: every segment is checked, with a local
+                # exemption for the pixels right at a doorway step.
+                if not hit:
+                    for i, (a, b) in enumerate(segs):
+                        eps = ENDPOINT_EPS_PX if i in (0, len(segs) - 1) else 0
+                        if _clearance(floor, a, b, eps) < WALL_CLEARANCE_PX:
+                            tight.append((start, pid, floor, i))
+                            break
     # Distinct legs only, so the budget is not spent on duplicate iterations.
+    # Keyed by place_id: two rows may share a name (Phone Booth x2) and be
+    # genuinely different destinations.
     far = list(dict.fromkeys(far))
     assert not unresolved, f"place_ids did not resolve: {unresolved[:5]}"
     print(f"routes checked: {total}; wall-crossing (penalized fallback): {len(crossing)}; "

@@ -564,6 +564,21 @@ def _dijkstra(adj, start, end):
     return None
 
 
+def _connector_penalized(floor, p, n):
+    """True when the connector p->n was charged WALL_PENALTY by connect().
+
+    Mirrors connect()'s admission rule exactly: a connector that crosses a
+    wall is only ever used as the penalized fallback, and a connector that
+    violates the clearance band is charged the penalty unless the violation
+    sits inside ENDPOINT_EPS of the endpoint (the legitimate "you are
+    standing in the doorway" case).
+    """
+    if _blocked(floor, p, n):
+        return True
+    return _blocked_clear(floor, p, n) and _blocked_beyond(floor, p, n,
+                                                            ENDPOINT_EPS)
+
+
 def _path_points(floor, start_xy, end_xy, diag=None):
     """Build the full route polyline on a single floor, respecting walls.
 
@@ -701,8 +716,22 @@ def _path_points(floor, start_xy, end_xy, diag=None):
         out.append(p)
     if diag is not None:
         segs = list(zip(out, out[1:]))
-        inner = segs[1:-1] if len(segs) > 2 else []
-        penalized = sum(1 for a, b in inner if _blocked_clear(floor, a, b))
+        # Count penalized segments over ALL of them, not just the inner ones.
+        # The first and last polyline segments ARE the endpoint connectors
+        # that connect() may have charged WALL_PENALTY, so restricting the
+        # count to segs[1:-1] hid exactly the edges worth reporting -- and
+        # the clearance assertion skipped the same segments, so neither side
+        # of the test noticed.
+        penalized = 0
+        for i, (a, b) in enumerate(segs):
+            if i == 0:
+                if _connector_penalized(floor, a, b):
+                    penalized += 1
+            elif i == len(segs) - 1:
+                if _connector_penalized(floor, b, a):
+                    penalized += 1
+            elif _blocked_clear(floor, a, b):
+                penalized += 1
         diag.update({
             'penalty_edges': penalized + (1 if s_fell else 0)
             + (1 if e_fell else 0),

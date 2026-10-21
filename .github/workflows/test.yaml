@@ -30,6 +30,17 @@ jobs:
           PYTHONPATH=src python src/test_fallbacks.py
           PYTHONPATH=src python src/test_route_schema.py
 
+      - name: Route quality (walkable / reachable / efficient / points)
+        # Second opinion on the same routes, computed from the free space
+        # instead of from the router's own geometry -- see
+        # ROUTE_QUALITY_SPEC.md. Independent implementation on purpose: a
+        # test that shares its code with the code under test cannot catch a
+        # shared mistake.
+        run: PYTHONPATH=src python dev/route_quality.py
+
+      - name: Raster cross-check (independent of the vector wall tests)
+        run: PYTHONPATH=src python dev/xcheck_raster.py
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
