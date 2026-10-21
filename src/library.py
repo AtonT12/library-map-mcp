@@ -17,9 +17,9 @@ import models
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_FILE = os.path.join(BASE_DIR, 'locations.csv')
 CORRIDORS_FILE = os.path.join(BASE_DIR, 'corridors.json')
-# Data-side point relocation (WALL_EXTRACTION_PLAN §2.1): keyed by place_id,
-# applied once in _load_rows() so all coordinate consumers share the same
-# effective coords. locations.csv itself is never modified.
+# Data-side point relocation: keyed by place_id, applied once in _load_rows()
+# so all coordinate consumers share the same effective coords. locations.csv
+# itself is never modified (it is upstream data).
 OVERRIDES_FILE = os.path.join(BASE_DIR, 'src', 'route_overrides.json')
 # Floor map images live under maps/. Stored references (locations.csv column
 # and corridors.json "map_file") keep bare filenames; resolve them here.
@@ -250,10 +250,10 @@ def _load_rows():
     """Read locations.csv (+route_overrides.json), hot-reloading on mtime change.
 
     The cache key covers both files' mtimes so editing the override alone
-    triggers a refresh (WALL_EXTRACTION_PLAN §2.1 req. 2). Cached rows are the
-    *effective* coordinates, shared by every consumer (§2.1 req. 1/4). A failed
-    reload keeps the previous (working) rows and logs a warning. With no cache
-    yet and no readable file, returns [] (the old missing-file behavior).
+    triggers a refresh. Cached rows are the *effective* coordinates, shared by
+    every consumer. A failed reload keeps the previous (working) rows and logs
+    a warning. With no cache yet and no readable file, returns [] (the old
+    missing-file behavior).
     """
     try:
         mtime = os.path.getmtime(DATA_FILE)

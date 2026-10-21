@@ -20,8 +20,10 @@ This project bridges the gap by:
   tools (`search_locations`, `get_route`, `get_location_detail`,
   `get_library_status`), 1 app-only tile tool (`get_map_view`), and 2
   legacy image tools kept as fallback.
-- **Maintenance**: Includes web-based Calibration (`calibrate.html`) and
-  Corridor (`corridors.html`) editors, plus a startup asset self-check.
+- **Maintenance**: Includes two browser editors — `corridors.html` for walls
+  and the walkable spine (the single source of truth, exported to
+  `corridors.json`) and `calibrate.html` for marking location points on the
+  base map — plus a startup asset self-check.
 
 ## Roadmap
 - [x] Integration with official Chatbot via MCP Server (server side done;
