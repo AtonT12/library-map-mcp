@@ -7,12 +7,15 @@ links. Served as the ui://nav/library-view.html MCP resource.
 """
 
 import base64
+import json
 import os
 
 # template.py lives one level deeper (src/view/) than library.py, hence 3x dirname.
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 VIEW_DIR = os.path.join(BASE_DIR, 'src', 'view')
 STATIC_DIR = os.path.join(BASE_DIR, 'src', 'static')
+
+from view.plan_outline import PLAN_OUTLINE  # noqa: E402
 
 # (floor, small-webp file, full-res base file). Full-res sizes are read
 # from disk at build time -- never hardcode them (a re-cropped base map
@@ -72,8 +75,23 @@ def build_view_html():
             sw, sh = img.size
         with Image.open(os.path.join(BASE_DIR, "maps", full)) as img:
             fw, fh = img.size
-        maps[floor] = {"href": uri, "w": sw, "h": sh, "fw": fw, "fh": fh}
-    manifest = json.dumps({"maps": maps})
+        maps[floor] = {"href": uri, "w": sw, "h": sh, "fw": fw, "fh": fh,
+                       "outline": PLAN_OUTLINE[floor]}
+    # Wall segments per floor, in full-res pixel coords. The 3D view extrudes
+    # them into vertical faces so the model reads as architecture rather than
+    # a tilted picture; the flat 2D view ignores them. They come from
+    # corridors.json, the same geometry the router treats as impassable.
+    walls = {}
+    try:
+        import library
+        for floor in maps:
+            walls[floor] = [
+                [[float(a[0]), float(a[1])], [float(b[0]), float(b[1])]]
+                for a, b in library.CORRIDORS[floor].get("walls", [])
+            ]
+    except Exception:                      # pragma: no cover - defensive
+        walls = {floor: [] for floor in maps}
+    manifest = json.dumps({"maps": maps, "walls": walls})
     return f"""<!doctype html>
 <html lang="en">
 <head>

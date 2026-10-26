@@ -1173,8 +1173,14 @@ def _polyline_length(pts):
                for a, b in zip(pts, pts[1:]))
 
 
-def get_route(destination, start=None, accessible_only=False):
-    """Walking route as a RoutePlan (pure JSON, no images)."""
+def get_route(destination, start=None, accessible_only=False,
+              view_mode='3d'):
+    """Walking route as a RoutePlan (pure JSON, no images).
+
+    view_mode picks how the interactive view presents the plan: '3d' (the
+    default) renders an extruded model of the building with the route
+    floating above the wall tops; '2d' renders a flat floor plan.
+    """
     route = build_route(destination, start,
                         accessible_only=accessible_only)
     origin = _row_to_place(route['src'])
@@ -1214,7 +1220,7 @@ def get_route(destination, start=None, accessible_only=False):
         plan_id=plan_id,
         generated_at=datetime.now(timezone.utc).isoformat(),
         origin=origin, destination=dest, totals=totals, legs=legs,
-        warnings=warnings)
+        warnings=warnings, view_mode=view_mode)
 
 
 STATUS_FILE = os.path.join(BASE_DIR, 'status.json')

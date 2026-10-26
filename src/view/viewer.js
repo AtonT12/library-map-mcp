@@ -26,7 +26,12 @@ const View = (() => {
   let route = null;      // parsed {legs, origin, destination, planId, warnings}
   let floor = null;      // current floor tab
   let vbMemo = {};       // floor -> {x,y,w,h} viewBox memory
-  let mode = "2d";       // "2d" | "3d"
+  // The 3D model is the default view: a flat plan cannot show a route that
+  // changes floors, and the extruded model reads as the building itself.
+  // A caller can still ask for the flat view (the model passes
+  // view_mode="2d" when the user asks for a plain floor plan).
+  let mode = "3d";       // "2d" | "3d"
+  let requestedMode = null;   // explicit mode from the tool arguments
   let tiltSQ = 0.62;
   let tiles = new Map(); // LRU: key -> dataUri
   let tileTimer = null;
@@ -172,6 +177,13 @@ const View = (() => {
 
   function asRoute(sc) {
     if (!sc || !Array.isArray(sc.legs) || sc.legs.length === 0) return null;
+    // A view_mode in the result is the authoritative presentation hint: the
+    // host always delivers the result, whereas tool-input may be absent.
+    const vm = sc.view_mode ? String(sc.view_mode).toLowerCase() : null;
+    if (vm === "2d" || vm === "3d") {
+      requestedMode = vm;
+      mode = vm;
+    }
     return {
       legs: sc.legs,
       origin: sc.origin || null,
@@ -238,9 +250,18 @@ const View = (() => {
   }
 
   function onToolInput(params) {
-    setStatus("tool-input received (arguments logged to console).");
-    // eslint-disable-next-line no-console
-    console.log("[view] tool-input", params);
+    // The host forwards the tool arguments before the result. A
+    // view_mode argument lets the caller pick the presentation: "2d" for a
+    // flat floor plan, "3d" (default) for the extruded model.
+    const args = (params && params.arguments) || null;
+    if (args && typeof args === "object" && args.view_mode) {
+      const m = String(args.view_mode).toLowerCase();
+      if (m === "2d" || m === "3d") {
+        requestedMode = m;
+        mode = m;
+      }
+    }
+    setStatus("tool-input received.");
   }
 
   // -- Map geometry (2D) -----------------------------------------------------------
@@ -500,8 +521,10 @@ const View = (() => {
     });
     const b3 = $("mode3d");
     if (b3) {
+      // 3D works for single-floor routes too (a lone floor plate with
+      // extruded walls); only the cross-floor connector is missing there.
       const cross = route.legs.length >= 2;
-      b3.disabled = !cross;
+      b3.disabled = false;
       b3.textContent = cross && mode === "2d" ? "3D · 跨层" : "3D";
       b3.setAttribute("aria-pressed", mode === "3d" ? "true" : "false");
     }
@@ -576,17 +599,12 @@ const View = (() => {
     if (!route) return;
     bindPanZoom();
     if (mode === "3d") {
-      if (route.legs.length < 2) {
+      try {
+        render3D();
+        return;
+      } catch (e) {
         mode = "2d";
-        setStatus("single-floor route: 3D unavailable, showing 2D.");
-      } else {
-        try {
-          render3D();
-          return;
-        } catch (e) {
-          mode = "2d";
-          setStatus("3D 渲染异常，已回落 2D 平铺。");
-        }
+        setStatus("3D 渲染异常，已回落 2D 平铺。");
       }
     }
     render2D();
@@ -597,21 +615,119 @@ const View = (() => {
   function projParams() {
     const SQ = tiltSQ;
     const SH = (1 - SQ) * 0.18;
-    let UW = 0, UH = 0;
-    route.legs.forEach((l) => {
-      const m = mapInfo(l.floor);
-      if (m) { UW = Math.max(UW, m.fw); UH = Math.max(UH, m.fh); }
-    });
     const svg = $("map");
     const vw = (svg && svg.clientWidth) || 800;
     const vh = (svg && svg.clientHeight) || 600;
-    // Fit the union box at SQ tilt plus the 6F lift.
-    const S = Math.min(vw / (UW * (1 + SH) + 1), (vh * 0.92) / (UH * SQ + 0.06 * UH + 1));
-    return { S, SQ, SH, UW, UH, z6: 0.06 * UH * S, thick: 0.012 * UH * S, lift: 0.02 * UH * S, vw, vh };
+
+    // Collect the plan outline of every leg (not the full base maps: the
+    // maps carry a legend / title / compass band below the plan, 55% of
+    // 6F, and fitting the full image stretched the slab and pushed the
+    // route off-centre).
+    const rectsOf = (floorName) => {
+      const m = mapInfo(floorName);
+      if (!m) return [];
+      return outlineOf(floorName) || [[0, 0, m.fw, m.fh]];
+    };
+    const legs = route.legs || [];
+    const floors = [];
+    legs.forEach((l) => {
+      if (floors.indexOf(l.floor) < 0) floors.push(l.floor);
+    });
+
+    // Two-pass fit: the floor separation depends on the scale and the scale
+    // depends on the separation. Guess, then refine against the real
+    // projected bounding box so the model fills the viewport.
+    let S = 1, z6 = 0, UH = 1;
+    for (let pass = 0; pass < 3; pass++) {
+      const pts = [];
+      floors.forEach((f) => {
+        const z = f === "6F" ? z6 : 0;
+        rectsOf(f).forEach((r) => {
+          [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]].forEach(([x, y]) => {
+            pts.push([S * (x + SH * y), S * SQ * y - z]);
+          });
+        });
+      });
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      pts.forEach((p) => {
+        if (p[0] < minX) minX = p[0];
+        if (p[0] > maxX) maxX = p[0];
+        if (p[1] < minY) minY = p[1];
+        if (p[1] > maxY) maxY = p[1];
+      });
+      const bw = Math.max(1, maxX - minX);
+      const bh = Math.max(1, maxY - minY);
+      // Scale so the projected model fits both axes with a small margin.
+      const next = Math.min((vw * 0.96) / bw, (vh * 0.96) / bh);
+      if (Math.abs(next - S) < 1e-6) { S = next; break; }
+      S = next;
+      // Floor separation: one storey above the projected height of the
+      // tallest slab, so the upper floor is never hidden behind the lower
+      // one.
+      UH = Math.max.apply(null, floors.map((f) => {
+        const rs = rectsOf(f);
+        return rs.length ? Math.max.apply(null, rs.map((r) => r[3])) : 1;
+      }));
+      z6 = 0.26 * UH * S;
+    }
+    return {
+      S, SQ, SH, UW: 1, UH,
+      z6,                        // 6F floor height above 5F
+      thick: 0.010 * UH * S,    // slab thickness
+      lift: 0.018 * UH * S,     // route lift above the slab
+      wallH: 0.030 * UH * S,    // extruded wall height
+      vw, vh,
+    };
+  }
+
+  // Plan outline of a floor: list of [x0,y0,x1,y1] in full-res px.
+  function outlineOf(floorName) {
+    const m = mapInfo(floorName);
+    if (!m || !Array.isArray(m.outline) || !m.outline.length) return null;
+    return m.outline;
+  }
+
+  // Wall segments of a floor in full-res px, from the manifest. Same
+  // geometry the router treats as impassable.
+  function wallsOf(floorName) {
+    const all = (window.__LIB_VIEW__ && window.__LIB_VIEW__.walls) || null;
+    if (!all) return [];
+    const w = all[floorName];
+    return Array.isArray(w) ? w : [];
   }
 
   function project(x, y, z, P) {
     return [P.S * (x + P.SH * y), P.S * P.SQ * y - z];
+  }
+
+  // Screen-space bounding box of the projected model, with a margin.
+  function projBounds(P, legs) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    const grow = (x, y) => {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    };
+    legs.forEach((l) => {
+      const z = l.floor === "6F" ? P.z6 : 0;
+      const rects = outlineOf(l.floor) || [];
+      rects.forEach((r) => {
+        [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]].forEach(([x, y]) => {
+          const p = project(x, y, z, P);
+          grow(p[0], p[1]);
+          // The slab has thickness below it and the walls rise above it.
+          grow(p[0], p[1] - (P.wallH || 0));
+          grow(p[0], p[1] + (P.thick || 0));
+        });
+      });
+    });
+    if (!isFinite(minX)) return { x: 0, y: 0, w: 100, h: 100 };
+    const pad = Math.max(12, (maxX - minX) * 0.03);
+    return {
+      x: minX - pad, y: minY - pad,
+      w: (maxX - minX) + pad * 2, h: (maxY - minY) + pad * 2,
+    };
   }
 
   function poly3(points, z, P) {
@@ -619,21 +735,29 @@ const View = (() => {
       .map((v) => v.toFixed(1)).join(",")).join(" ");
   }
 
-  function slabPolys(fw, fh, z, P) {
-    const c = [[0, 0], [fw, 0], [fw, fh], [0, fh]].map(([x, y]) => project(x, y, z, P));
-    const t = P.thick;
-    const sides = [
-      [c[0], c[1], [c[1][0], c[1][1] + t], [c[0][0], c[0][1] + t]],
-      [c[1], c[2], [c[2][0], c[2][1] + t], [c[1][0], c[1][1] + t]],
-      [c[2], c[3], [c[3][0], c[3][1] + t], [c[2][0], c[2][1] + t]],
-      [c[3], c[0], [c[0][0], c[0][1] + t], [c[3][0], c[3][1] + t]],
-    ];
-    const shadow = c.map(([x, y]) => [x + 10, y + 12]);
-    return { top: c, sides, shadow };
-  }
-
   function ptsStr(pts) {
     return pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+  }
+
+  // The slab is the plan outline: one or more rectangles, each drawn as a
+  // top face plus extruded side faces, so the model reads as a floor plate
+  // rather than a rectangle of picture. 5F is L-shaped, hence the list.
+  function slabPolys(rects, z, P) {
+    const tops = [];
+    const sides = [];
+    const t = P.thick;
+    rects.forEach((r) => {
+      const c = [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]]
+        .map(([x, y]) => project(x, y, z, P));
+      tops.push(c);
+      // Only the south and east edges get a visible side face (the ones
+      // facing the camera); drawing all four doubles the polygon count and
+      // hides the floor behind its own back walls.
+      sides.push([c[1], c[2], [c[2][0], c[2][1] + t], [c[1][0], c[1][1] + t]]);
+      sides.push([c[2], c[3], [c[3][0], c[3][1] + t], [c[2][0], c[2][1] + t]]);
+    });
+    const shadow = tops.map((c) => c.map(([x, y]) => [x + 10, y + 12]));
+    return { tops, sides, shadow };
   }
 
   function render3D() {
@@ -646,12 +770,10 @@ const View = (() => {
     const zOf = (l) => (l.floor === "6F" ? P.z6 : 0);
 
     // Screen-space viewBox covering union + lift.
-    const x0 = -20, y0 = -(P.z6 + P.thick + 40);
-    const x1 = P.S * (P.UW * (1 + P.SH)) + 20;
-    const y1 = P.S * P.SQ * P.UH + 20;
+    // Screen-space viewBox covering the projected model plus the lift.
+    const vb = projBounds(P, legs);
     svg.textContent = "";
-    svg.setAttribute("viewBox", `${x0.toFixed(1)} ${y0.toFixed(1)} ${(x1 - x0).toFixed(1)} ${(y1 - y0).toFixed(1)}`);
-
+    svg.setAttribute("viewBox", `${vb.x.toFixed(1)} ${vb.y.toFixed(1)} ${vb.w.toFixed(1)} ${vb.h.toFixed(1)}`);
     // v1 polish: slab gradient + soft shadow filter (single defs, rebuilt
     // with every render since the svg is cleared above).
     const defs = svgEl("defs", null, svg);
@@ -660,25 +782,79 @@ const View = (() => {
     svgEl("stop", { offset: 1, "stop-color": "#d7dde3" }, grad);
     const filt = svgEl("filter", { id: "soft3d", x: "-40%", y: "-40%", width: "180%", height: "180%" }, defs);
     svgEl("feGaussianBlur", { stdDeviation: 8 }, filt);
+    const wgrad = svgEl("linearGradient", { id: "wall3d", x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+    svgEl("stop", { offset: 0, "stop-color": "#8d7b9e", "stop-opacity": 0.85 }, wgrad);
+    svgEl("stop", { offset: 1, "stop-color": "#5d4f6b", "stop-opacity": 0.6 }, wgrad);
 
     const drawFloor = (leg, current) => {
       const m = mapInfo(leg.floor);
       if (!m) return;
       const z = zOf(leg);
-      const g = svgEl("g", { opacity: current ? 1 : 0.45 }, svg);
-      const slab = slabPolys(m.fw, m.fh, z, P);
-      svgEl("polygon", { points: ptsStr(slab.shadow), fill: "#000", opacity: 0.15, filter: "url(#soft3d)" }, g);
+      const g = svgEl("g", { opacity: current ? 1 : 0.72 }, svg);
+      const rects = outlineOf(leg.floor) || [[0, 0, m.fw, m.fh]];
+      const slab = slabPolys(rects, z, P);
+
+      // Contact shadow under the plate.
+      slab.shadow.forEach((sh) => {
+        svgEl("polygon", { points: ptsStr(sh), fill: "#000", opacity: 0.15, filter: "url(#soft3d)" }, g);
+      });
       slab.sides.forEach((s) => {
         svgEl("polygon", { points: ptsStr(s), fill: "#8f99a3", opacity: 0.9 }, g);
       });
-      svgEl("polygon", { points: ptsStr(slab.top), fill: "url(#slab3d)", stroke: "#ffffff", "stroke-width": 2 }, g);
+      slab.tops.forEach((t) => {
+        svgEl("polygon", { points: ptsStr(t), fill: "url(#slab3d)", stroke: "#ffffff", "stroke-width": 2 }, g);
+      });
+
+      // Base map texture, clipped to the plan outline so the legend band
+      // never shows up on the plate. The clip path lives in the IMAGE's own
+      // coordinate system (full-res px), because the group that carries it
+      // is already transformed into screen space -- clipping in screen
+      // space would apply the transform twice and drop the texture.
+      const clipId = `clip-${leg.floor}`;
+      const clip = svgEl("clipPath", { id: clipId }, defs);
+      rects.forEach((r) => {
+        svgEl("rect", {
+          x: r[0], y: r[1], width: r[2] - r[0], height: r[3] - r[1],
+        }, clip);
+      });
       const rg = svgEl("g", {
         transform: `matrix(${P.S} 0 ${(P.S * P.SH).toFixed(4)} ${(P.S * P.SQ).toFixed(4)} 0 ${(-z).toFixed(1)})`,
+        "clip-path": `url(#${clipId})`,
       }, g);
       svgEl("image", { href: m.href, x: 0, y: 0, width: m.fw, height: m.fh, opacity: 0.93 }, rg);
+
+      // Extruded walls: each segment becomes a vertical face rising from
+      // the slab. Faces are drawn far-to-near along y so the nearer wall
+      // hides the one behind it, which is what gives the model its depth.
+      // They stay translucent on purpose: the floor plan underneath is the
+      // information, the extrusion only says "this is a wall".
+      const walls = wallsOf(leg.floor);
+      const wh = P.wallH || 0;
+      const sorted = walls.slice().sort((a, b) => (a[0][1] + a[1][1]) - (b[0][1] + b[1][1]));
+      const wg = svgEl("g", null, g);
+      sorted.forEach((seg) => {
+        const a = project(seg[0][0], seg[0][1], z, P);
+        const b = project(seg[1][0], seg[1][1], z, P);
+        if (a[0] === b[0] && a[1] === b[1]) return;
+        // The face rises upward on screen, i.e. subtract from y.
+        svgEl("polygon", {
+          points: ptsStr([a, b, [b[0], b[1] - wh], [a[0], a[1] - wh]]),
+          fill: "url(#wall3d)", stroke: "#4a3f56", "stroke-width": 1,
+          "stroke-opacity": 0.45,
+        }, wg);
+        // Top cap: a thin bright line that reads as the wall's top edge.
+        svgEl("line", {
+          x1: a[0].toFixed(1), y1: (a[1] - wh).toFixed(1),
+          x2: b[0].toFixed(1), y2: (b[1] - wh).toFixed(1),
+          stroke: "#f2e9f8", "stroke-width": 2, "stroke-linecap": "round",
+          opacity: 0.85,
+        }, wg);
+      });
+
+      // Route: floats above the wall tops so it is never occluded.
       const poly = Array.isArray(leg.polyline) ? leg.polyline : [];
+      const lift = (P.lift || 0) + (P.wallH || 0) * 1.15;
       if (poly.length >= 2) {
-        const lift = P.lift || 0;
         const flat = poly.map((p) => project(p[0], p[1], z, P));
         const sh2 = flat.map(([x, y]) => [x + 9, y + 11]);
         svgEl("polyline", { points: ptsStr(sh2), fill: "none", stroke: "#000", opacity: 0.3, "stroke-width": 10, "stroke-linejoin": "round", filter: "url(#soft3d)" }, g);
@@ -687,7 +863,7 @@ const View = (() => {
         svgEl("polyline", { points: ptsStr(up), fill: "none", stroke: "#1E6FFF", "stroke-width": 5.5, "stroke-linejoin": "round" }, g);
       }
       const steps = Array.isArray(leg.steps) ? leg.steps : [];
-      const lift2 = P.lift || 0;
+      const lift2 = lift;
       const dot = (p, fill, title) => {
         if (!p) return;
         const [sx, sy] = project(p[0], p[1], z + lift2, P);
@@ -699,10 +875,17 @@ const View = (() => {
       };
       if (poly[0]) dot(poly[0], "#22a355", (steps[0] || {}).label || "start");
       if (poly[poly.length - 1]) dot(poly[poly.length - 1], "#d33", (steps[steps.length - 1] || {}).label || "end");
-      // Floor plate (v1): dark chip with the floor name at the slab corner.
-      const corner = slab.top[0];
-      svgEl("rect", { x: (corner[0] - 8).toFixed(1), y: (corner[1] - 46).toFixed(1), width: 64, height: 36, rx: 7, fill: "#111", opacity: 0.85 }, g);
-      const plate = svgEl("text", { x: (corner[0] + 24).toFixed(1), y: (corner[1] - 19).toFixed(1), "font-size": 24, "font-weight": "bold", "text-anchor": "middle", fill: "#fff" }, g);
+      // Floor plate (v1): dark chip with the floor name. The chip sits above
+      // the middle of the slab so it never falls outside the view box
+      // (the projected corners do, for the far floor).
+      const mid = slab.tops.map((c) => [
+        (c[0][0] + c[1][0] + c[2][0] + c[3][0]) / 4,
+        (c[0][1] + c[1][1] + c[2][1] + c[3][1]) / 4,
+      ])[0];
+      const chipX = mid[0] - 32;
+      const chipY = mid[1] - 62;
+      svgEl("rect", { x: chipX.toFixed(1), y: chipY.toFixed(1), width: 64, height: 36, rx: 7, fill: "#111", opacity: 0.85 }, g);
+      const plate = svgEl("text", { x: (chipX + 32).toFixed(1), y: (chipY + 27).toFixed(1), "font-size": 24, "font-weight": "bold", "text-anchor": "middle", fill: "#fff" }, g);
       plate.textContent = leg.floor;
     };
 
@@ -754,10 +937,6 @@ const View = (() => {
   }
 
   function setMode(next) {
-    if (next === "3d" && (!route || route.legs.length < 2)) {
-      setStatus("single-floor route: 3D unavailable.");
-      return;
-    }
     mode = next;
     hideTiles();
     try {

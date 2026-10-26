@@ -266,6 +266,15 @@
     "totals": {
       "$ref": "#/$defs/RouteTotals"
     },
+    "view_mode": {
+      "default": "3d",
+      "enum": [
+        "2d",
+        "3d"
+      ],
+      "title": "View Mode",
+      "type": "string"
+    },
     "warnings": {
       "items": {
         "type": "string"

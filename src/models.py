@@ -69,6 +69,10 @@ class RoutePlan(BaseModel):
     totals: RouteTotals
     legs: list[RouteLeg]
     warnings: list[str] = Field(default_factory=list)
+    # Presentation hint for the interactive view: "3d" (extruded model,
+    # the default) or "2d" (flat floor plan). The route geometry is the
+    # same either way; this only picks how it is drawn.
+    view_mode: Literal["2d", "3d"] = "3d"
 
 
 class LocationMatch(BaseModel):

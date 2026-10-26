@@ -62,8 +62,14 @@ let domReady = null;
 global.window = {
   __LIB_VIEW__: {
     maps: {
-      "5F": { href: "data:image/webp;base64,AAA", w: 1515, h: 1051, fw: 6062, fh: 4205 },
-      "6F": { href: "data:image/webp;base64,BBB", w: 1883, h: 1011, fw: 7534, fh: 4044 },
+      "5F": { href: "data:image/webp;base64,AAA", w: 1515, h: 1051, fw: 6062, fh: 4205,
+              outline: [[0, 0, 6062, 1900], [0, 1900, 1400, 4205]] },
+      "6F": { href: "data:image/webp;base64,BBB", w: 1883, h: 1011, fw: 7534, fh: 4044,
+              outline: [[0, 0, 7534, 1760]] },
+    },
+    walls: {
+      "5F": [[[100, 100], [500, 100]], [[500, 100], [500, 400]]],
+      "6F": [[[200, 200], [900, 200]], [[900, 200], [900, 500]]],
     },
   },
   parent: { postMessage: (m) => sent.push(m) },
@@ -96,6 +102,25 @@ const driver = `
               structuredContent: FIXTURE } } });
   await sleep(50);
   assert(View._t.get().floor === "5F", "first leg floor");
+  // The 3D model is the default presentation, so the route arrives in 3D.
+  assert(View._t.get().mode === "3d", "default mode is 3d");
+  // 3D draws the floor plate as a polygon and extrudes the walls into
+  // vertical faces: at least one wall face per manifest wall of this floor.
+  const wallFaces = findAll(svg, (n) => n.tag === "polygon"
+    && n.attrs.fill === "url(#wall3d)");
+  assert(wallFaces.length >= 2, "extruded wall faces: " + wallFaces.length);
+  const wallCaps = findAll(svg, (n) => n.tag === "line"
+    && n.attrs.stroke === "#f2e9f8");
+  assert(wallCaps.length >= 2, "wall top caps: " + wallCaps.length);
+  // The base map texture must be clipped to the plan outline, otherwise the
+  // legend band of the base map would show up on the floor plate.
+  const clipped = findAll(svg, (n) => n.tag === "g"
+    && String(n.attrs["clip-path"] || "").indexOf("#clip-") >= 0);
+  assert(clipped.length >= 1, "texture clipped to the plan outline");
+
+  // The flat view is still reachable and unchanged.
+  View._t.setMode("2d");
+  await sleep(20);
   assert(svg.attrs.viewBox === "0 0 1515 1051", "viewBox 5F");
   const paths = findAll(svg, (n) => n.tag === "path");
   assert(paths.length >= 2, "casing+core");
@@ -148,7 +173,9 @@ const driver = `
   const tp = (leg) => (leg.steps.find((s) => s.kind === "transit") || {}).point;
   const eA = View._t.project(...tp(downLegs[0]), zOf("6F"), P);
   const eB = View._t.project(...tp(downLegs[1]), zOf("5F"), P);
-  const line = findAll(svg, (n) => n.tag === "line")[0];
+  // The connector is the red link between the two levels; the walls also
+  // draw white top-cap lines, so pick the red one.
+  const line = findAll(svg, (n) => n.tag === "line" && n.attrs.stroke === "#c00")[0];
   assert(line, "connector line present");
   assert(line.attrs.x1 === eA[0].toFixed(1) && line.attrs.y1 === eA[1].toFixed(1) &&
          line.attrs.x2 === eB[0].toFixed(1) && line.attrs.y2 === eB[1].toFixed(1),
@@ -165,13 +192,17 @@ const driver = `
   await sleep(20);
   assert(View._t.get().mode === "2d", "throw must fall back to 2d");
 
-  // single-leg route: 3D refused, no crash
+  // single-leg route: 3D still works (one floor plate, no cross-floor
+  // connector) -- a lone floor is a valid model, not a degraded case.
   onMsg({ data: { jsonrpc: "2.0", method: "ui/notifications/tool-result",
     params: { structuredContent: { legs: [{ floor: "5F", polyline: [[1, 2], [3, 4]],
       steps: [], map_file: "5f_base.jpg" }], warnings: [] } } } });
   await sleep(20);
   View._t.setMode("3d");
-  assert(View._t.get().mode === "2d", "1-leg must refuse 3d");
+  await sleep(20);
+  assert(View._t.get().mode === "3d", "1-leg must keep 3d");
+  assert(findAll(svg, (n) => n.tag === "polygon").length >= 1,
+    "1-leg still draws a floor plate");
 
   // garbage -> JSON mode; cancelled -> status+bar; empty -> error bar
   onMsg({ data: { jsonrpc: "2.0", method: "ui/notifications/tool-result",
