@@ -242,13 +242,13 @@ Repeats the P1 question without a browser. Two guards shape the calls: guest tok
 $g = Invoke-RestMethod -Method Post -Uri "http://localhost:3000/auth/guest" -ContentType "application/json" -Body "{}"
 $t = "Bearer $($g.access_token)"
 
-# 2) start chat — explicit tool steering makes the app path fire
+# 2) start chat — explicit tool steering makes the app path fire,
+#    and attach the SSE stream IMMEDIATELY: /chat/stream/:id only serves a
+#    session whose status is still ONGOING (the route throws 400 afterwards),
+#    so draining after completion yields nothing. Read until the 'done' event.
 $body = '{"prompt":"Call the get_route tool now (not any other library tool), with destination \"N607\".","conversationPairId":"smoke-1"}'
 $sid = (Invoke-RestMethod -Method Post -Uri "http://localhost:3000/chat/start?referrer=ask-roary" -ContentType "application/json" -Headers @{Authorization=$t} -Body $body).chatSessionId
-
-# 3) wait for completion, then drain the stream
-while ((Invoke-RestMethod "http://localhost:3000/chat/status/$sid" -Headers @{Authorization=$t}).status -eq 'ONGOING') { Start-Sleep 2 }
-curl.exe -s -N "http://localhost:3000/chat/stream/$sid" -H "Authorization: $t" -o chat_stream.sse
+curl.exe -s -N "http://localhost:3000/chat/stream/$sid" -H "Accept: text/event-stream" -H "Authorization: $t" -o chat_stream.sse
 ```
 
 Then assert against `chat_stream.sse` (*all observed*):

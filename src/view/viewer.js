@@ -114,8 +114,12 @@ const View = (() => {
   // -- Host state --------------------------------------------------------------
   function applyTheme() {
     const theme = hostContext && hostContext.theme;
-    document.documentElement.style.colorScheme =
-      theme === "dark" ? "dark" : "light";
+    const de = document.documentElement;
+    de.style.colorScheme = theme === "dark" ? "dark" : "light";
+    // Dual-path theming: an explicit host theme always wins; the system
+    // preference only applies while no explicit theme was set.
+    if (theme === "dark" || theme === "light") de.dataset.theme = theme;
+    else delete de.dataset.theme;
   }
 
   function maxHeight() {
@@ -147,12 +151,70 @@ const View = (() => {
     reportSize();
   }
 
+  let lastSentSize = null;   // {w, h} of the last size-changed notification
+
   function reportSize() {
-    const de = document.documentElement || {};
-    const w = de.scrollWidth || (window.innerWidth || 0);
-    const h = de.scrollHeight || 0;
-    // Spec shape: {width, height}.
-    note("ui/notifications/size-changed", { width: w, height: h });
+    // Measure like the SDK does: temporarily size the root element to
+    // max-content so the reading reflects CONTENT, not the iframe's own
+    // height. With html,body{height:100%} a scrollHeight reading is the
+    // viewport height -- a self-confirming loop that pinned the frame at
+    // whatever the host already showed.
+    const de = document.documentElement;
+    if (!de || !de.style || typeof de.getBoundingClientRect !== "function") return;
+    const app = $("app");
+    const prevDocHeight = de.style.height;
+    const prevAppMax = app ? app.style.maxHeight : "";
+    try {
+      de.style.height = "max-content";
+      if (app) app.style.removeProperty("max-height");
+      const r = de.getBoundingClientRect();
+      const w = Math.round(r.width || de.scrollWidth || window.innerWidth || 0);
+      const h = Math.round(r.height || 0);
+      // Dedupe on the exact (width, height) pair: the host clamps on its side,
+      // so re-sending an unchanged value is pure protocol noise.
+      if (lastSentSize && lastSentSize.w === w && lastSentSize.h === h) return;
+      lastSentSize = { w, h };
+      note("ui/notifications/size-changed", { width: w, height: h });
+    } finally {
+      de.style.height = prevDocHeight;
+      if (app) app.style.maxHeight = prevAppMax;
+    }
+  }
+
+  function setStageAspect(w, h) {
+    // Single funnel for the stage box ratio: 3D passes the projected
+    // viewBox, 2D passes the floor map's viewBox, the degraded view 4/3.
+    const stage = $("stage");
+    if (!stage || !w || !h) return;
+    const f = (n) => Math.round(n * 100) / 100;
+    stage.style.aspectRatio = `${f(w)} / ${f(h)}`;
+  }
+
+  // Refit on WIDTH changes (the content is width-driven, via aspect-ratio);
+  // height-only changes (host clamping the frame) must NOT refit, otherwise
+  // grow -> report -> clamp -> refit would oscillate.
+  let fitRO = null;
+  function setupResizeObserver() {
+    if (fitRO || typeof ResizeObserver === "undefined") return;
+    let lastW = null;
+    fitRO = new ResizeObserver(() => {
+      const stage = $("stage");
+      const w = (stage && stage.clientWidth) || (window.innerWidth || 0);
+      if (lastW !== null && w === lastW) {
+        // Height-only change: keep the reported size honest, stop there.
+        reportSize();
+        return;
+      }
+      lastW = w;
+      if (!route) return;
+      try {
+        if (mode === "3d") render3D();
+        else render2D();
+      } catch { /* keep the current view */ }
+    });
+    fitRO.observe(document.documentElement);
+    const stage = $("stage");
+    if (stage) fitRO.observe(stage);
   }
 
   // -- V2: tool-result parsing ---------------------------------------------------
@@ -199,8 +261,8 @@ const View = (() => {
     const parsed = parseRouteData(params);
     if (parsed.kind === "empty") {
       lastSource = "empty";
-      showError("data", "未收到路线数据", [
-        { label: "重试", fn: () => window.location.reload() },
+      showError("data", "no route data received", [
+        { label: "Retry", fn: () => window.location.reload() },
       ]);
       renderData({ error: "no route data received" });
       renderContract();
@@ -208,8 +270,8 @@ const View = (() => {
     }
     if (parsed.kind === "text-raw") {
       lastSource = "text-raw";
-      showError("data", "structuredContent 与 text 都解析失败，已显示原始 text", [
-        { label: "反馈到对话", fn: () => sendMessage(parsed.raw) },
+      showError("data", "could not parse structuredContent or text; raw text shown below", [
+        { label: "Send to chat", fn: () => sendMessage(parsed.raw) },
       ]);
       renderData({ raw: parsed.raw });
       renderContract();
@@ -233,8 +295,8 @@ const View = (() => {
       else renderData(parsed.data);
     } catch (e) {
       showError("draw", e && e.message ? e.message : String(e), [
-        { label: "重试", fn: () => { try { renderRoute(); hideError(); } catch (e2) { /* keep bar */ } } },
-        { label: "降级为图片", fn: () => attemptDegraded("draw failed") },
+        { label: "Retry", fn: () => { try { renderRoute(); hideError(); } catch (e2) { /* keep bar */ } } },
+        { label: "Fall back to image", fn: () => attemptDegraded("draw failed") },
       ]);
     }
     renderContract();
@@ -245,7 +307,7 @@ const View = (() => {
     const reason = (params && params.reason) || "unknown reason";
     setStatus(`tool cancelled: ${reason}`);
     showError("cancelled", `Tool execution was cancelled (${reason})`, [
-      { label: "重试", fn: () => window.location.reload() },
+      { label: "Retry", fn: () => window.location.reload() },
     ]);
   }
 
@@ -326,6 +388,7 @@ const View = (() => {
     const vb = currentVB(floor);
     svg.textContent = "";
     svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+    setStageAspect(vb.w, vb.h);
     svgEl("image", { href: m.href, x: 0, y: 0, width: m.w, height: m.h }, svg);
     const g = svgEl("g", { id: "route" }, svg);
     const poly = Array.isArray(leg.polyline) ? leg.polyline : [];
@@ -358,6 +421,7 @@ const View = (() => {
     renderTabs();
     renderSide();
     maybeTile();
+    reportSize();
   }
 
   // -- V4: pan / zoom ------------------------------------------------------------
@@ -525,7 +589,7 @@ const View = (() => {
       // extruded walls); only the cross-floor connector is missing there.
       const cross = route.legs.length >= 2;
       b3.disabled = false;
-      b3.textContent = cross && mode === "2d" ? "3D · 跨层" : "3D";
+      b3.textContent = cross && mode === "2d" ? "3D · cross-floor" : "3D";
       b3.setAttribute("aria-pressed", mode === "3d" ? "true" : "false");
     }
   }
@@ -543,7 +607,7 @@ const View = (() => {
       html += "<ol>" + leg.steps.map((s) => `<li>${esc(s.instruction || s.label || "")}</li>`).join("") + "</ol>";
     }
     if (route.warnings.length) {
-      html += "<h4>注意</h4><ul>" +
+      html += "<h4>Warnings</h4><ul>" +
         route.warnings.map((w) => `<li>${esc(w)}</li>`).join("") + "</ul>";
     }
     d.innerHTML = html;
@@ -567,9 +631,9 @@ const View = (() => {
       if (d) {
         if (sc && sc.name) {
           d.innerHTML = `<h4>${esc(sc.name)}</h4>` +
-            `<div>楼层 ${esc(sc.floor || "")} · 坐标 (${esc((sc.point || []).join(", "))})</div>` +
-            (sc.call_number ? `<div>索书号 ${esc(sc.call_number)}</div>` : "") +
-            ((sc.other_floors || []).length ? `<div>亦在 ${esc(sc.other_floors.join("、"))}</div>` : "");
+            `<div>Floor ${esc(sc.floor || "")} · at (${esc((sc.point || []).join(", "))})</div>` +
+            (sc.call_number ? `<div>Call number ${esc(sc.call_number)}</div>` : "") +
+            ((sc.other_floors || []).length ? `<div>Also on ${esc(sc.other_floors.join(", "))}</div>` : "");
         } else {
           const t = ((res && res.content) || []).filter((b) => b && b.type === "text").map((b) => b.text).join("\n");
           d.innerHTML = `<h4>${esc(placeId)}</h4><pre>${esc(t)}</pre>`;
@@ -592,6 +656,7 @@ const View = (() => {
       showError("draw", e && e.message ? e.message : String(e));
     }
     renderContract();
+    reportSize();
   }
 
   function renderRoute() {
@@ -601,13 +666,15 @@ const View = (() => {
     if (mode === "3d") {
       try {
         render3D();
+        reportSize();
         return;
       } catch (e) {
         mode = "2d";
-        setStatus("3D 渲染异常，已回落 2D 平铺。");
+        setStatus("3D rendering failed; fell back to the flat 2D view.");
       }
     }
     render2D();
+    reportSize();
   }
 
   // -- 3D oblique view (5-2) ---------------------------------------------------------
@@ -668,7 +735,7 @@ const View = (() => {
         const rs = rectsOf(f);
         return rs.length ? Math.max.apply(null, rs.map((r) => r[3])) : 1;
       }));
-      z6 = 0.26 * UH * S;
+      z6 = 0.34 * UH * S;
     }
     return {
       S, SQ, SH, UW: 1, UH,
@@ -774,6 +841,7 @@ const View = (() => {
     const vb = projBounds(P, legs);
     svg.textContent = "";
     svg.setAttribute("viewBox", `${vb.x.toFixed(1)} ${vb.y.toFixed(1)} ${vb.w.toFixed(1)} ${vb.h.toFixed(1)}`);
+    setStageAspect(vb.w, vb.h);
     // v1 polish: slab gradient + soft shadow filter (single defs, rebuilt
     // with every render since the svg is cleared above).
     const defs = svgEl("defs", null, svg);
@@ -922,18 +990,37 @@ const View = (() => {
           svgEl("circle", { cx: q[0].toFixed(1), cy: q[1].toFixed(1), r: 9, fill: "#c00", stroke: "white", "stroke-width": 3 }, cg);
         });
         const label = t ? (t.direction === "down"
-          ? `↓ 下到 ${t.to_floor}` : `↑ 上到 ${t.to_floor}`) : "换层";
+          ? `↓ Down to ${t.to_floor}` : `↑ Up to ${t.to_floor}`) : "Change floors";
+        // Rounded pill: white ground, red text. The background width is a
+        // pure per-character estimate -- getBBox()/getComputedTextLength()
+        // are off limits because the headless test DOM does not implement
+        // them and a throw here would break the whole 3D pipeline.
+        const FS = 26, PADX = 12;
+        const estCh = (ch) => (
+          ch === " " ? 0.32 :
+          /[0-9]/.test(ch) ? 0.58 :
+          ch === "↑" || ch === "↓" ? 0.55 :
+          /^[a-z]$/.test(ch) ? 0.52 : 0.66);
+        let tw = 0;
+        for (const ch of label) tw += estCh(ch) * FS;
+        const pw = tw + PADX * 2, ph = FS * 1.5;
+        const mx = (qA[0] + qB[0]) / 2 + 14, my = (qA[1] + qB[1]) / 2;
+        svgEl("rect", {
+          x: (mx - pw / 2).toFixed(1), y: (my - ph / 2).toFixed(1),
+          width: pw.toFixed(1), height: ph.toFixed(1), rx: (ph / 2).toFixed(1),
+          fill: "#fff", stroke: "#d33", "stroke-width": 1.5,
+        }, cg);
         const tx = svgEl("text", {
-          x: ((qA[0] + qB[0]) / 2 + 12).toFixed(1),
-          y: ((qA[1] + qB[1]) / 2).toFixed(1),
-          "font-size": 26, fill: "#c00", "font-weight": "bold",
-          stroke: "#fff", "stroke-width": 4, "paint-order": "stroke",
+          x: mx.toFixed(1), y: (my + FS * 0.35).toFixed(1),
+          "font-size": FS, fill: "#c00", "font-weight": "bold",
+          "text-anchor": "middle",
         }, cg);
         tx.textContent = label;
       }
     }
     renderTabs();
     renderSide();
+    reportSize();
   }
 
   function setMode(next) {
@@ -945,6 +1032,7 @@ const View = (() => {
       showError("draw", e && e.message ? e.message : String(e));
     }
     renderContract();
+    reportSize();
   }
 
   // -- L3 degraded view ------------------------------------------------------------
@@ -972,6 +1060,8 @@ const View = (() => {
       }
       if (stage) {
         stage.textContent = "";
+        // The degraded image is a fixed 1600x1200 crop from get_map_view.
+        setStageAspect(4, 3);
         if (uri) {
           const im = document.createElement("img");
           im.src = uri;
@@ -981,14 +1071,15 @@ const View = (() => {
         }
         const d = $("detail");
         if (d) {
-          d.innerHTML = `<h4>步骤（降级视图：${esc(reason)}）</h4><ol>` +
+          d.innerHTML = `<h4>Steps (degraded view: ${esc(reason)})</h4><ol>` +
             steps.map((s) => `<li>${esc(s.instruction || s.label || "")}</li>`).join("") +
             "</ol>";
         }
+        reportSize();
       }
       showError("degraded", reason, [
-        { label: "反馈到对话", fn: () => sendMessage(`路线视图降级：${reason}`) },
-        { label: "重试完整视图", fn: () => { try { renderRoute(); hideError(); } catch { /* keep */ } } },
+        { label: "Send to chat", fn: () => sendMessage(`Route view degraded: ${reason}`) },
+        { label: "Retry full view", fn: () => { try { renderRoute(); hideError(); } catch { /* keep */ } } },
       ]);
     } catch (e) {
       showError("degraded", e && e.message ? e.message : String(e));
@@ -1035,8 +1126,8 @@ const View = (() => {
       hostContext = (res && res.hostContext) || {};
     } catch (e) {
       hostContext = {};
-      showError("handshake", `未能连接到 host，请重新发起提问 (${e && e.message ? e.message : e})`, [
-        { label: "重试", fn: () => boot() },
+      showError("handshake", `Could not reach the host; please ask again (${e && e.message ? e.message : e})`, [
+        { label: "Retry", fn: () => boot() },
       ]);
     }
     applyTheme();
@@ -1049,6 +1140,7 @@ const View = (() => {
     renderContract();
     renderData({ hint: "waiting for ui/notifications/tool-result…" });
     setStatus("waiting for tool-result…");
+    setupResizeObserver();
     reportSize();
   }
 
@@ -1081,7 +1173,7 @@ const View = (() => {
     _t: {
       get: () => ({ route, floor, mode, vbMemo, tiles: [...tiles.keys()] }),
       project, projParams, parseRouteData, asRoute, switchFloor, setMode,
-      attemptDegraded, cropOrigin, pathD,
+      attemptDegraded, cropOrigin, pathD, reportSize,
       setTilt: (v) => {
         if (!(v >= 0.45 && v <= 1.0)) return;
         tiltSQ = v;
@@ -1090,7 +1182,7 @@ const View = (() => {
             render3D();
           } catch {
             mode = "2d";
-            setStatus("3D 渲染异常，已回落 2D 平铺。");
+            setStatus("3D rendering failed; fell back to the flat 2D view.");
             render2D();
           }
         }

@@ -1213,7 +1213,9 @@ def get_route(destination, start=None, accessible_only=False,
     warnings = []
     for leg in legs:
         if not CORRIDORS[leg.floor].get('walls'):
-            warnings.append(f"{leg.floor} 未标注墙段，路线可能穿越墙体")
+            warnings.append(
+                f"{leg.floor} has no wall segments marked; "
+                "the route may pass through walls")
     plan_id = hashlib.sha1(
         f"{origin.id}:{dest.id}:{accessible_only}".encode()).hexdigest()[:12]
     return models.RoutePlan(

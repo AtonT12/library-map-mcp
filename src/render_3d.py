@@ -33,7 +33,7 @@ ROUTE_RGB = (30, 111, 255)
 BG = (32, 36, 42)
 
 # Floor separation as a fraction of the projected floor height.
-Z6_RATIO = 0.26
+Z6_RATIO = 0.34
 
 # Rendered size of the final PNG.
 OUT_W = 1600

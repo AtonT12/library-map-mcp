@@ -59,7 +59,12 @@ const sent = [];
 let onMsg = null;
 let domReady = null;
 
+// Measured content size while the root is forced to max-content. Tests
+// mutate it to prove changed sizes re-notify and stable ones do not.
+const docRect = { width: 800, height: 520 };
+
 global.window = {
+  innerWidth: 800,
   __LIB_VIEW__: {
     maps: {
       "5F": { href: "data:image/webp;base64,AAA", w: 1515, h: 1051, fw: 6062, fh: 4205,
@@ -80,7 +85,20 @@ global.document = {
   getElementById: el,
   createElement: (t) => mkEl(t),
   createElementNS: (ns, t) => mkEl(t),
-  documentElement: { style: {}, scrollHeight: 100 },
+  documentElement: {
+    style: {},
+    scrollHeight: 100,
+    scrollWidth: 800,
+    dataset: {},
+    // Mirrors the SDK measurement trick: while height is forced to
+    // max-content the reading is the CONTENT box; at rest it is the
+    // iframe viewport.
+    getBoundingClientRect() {
+      return this.style.height === "max-content"
+        ? { left: 0, top: 0, width: docRect.width, height: docRect.height }
+        : { left: 0, top: 0, width: 800, height: 180 };
+    },
+  },
   addEventListener: (t, fn) => { if (t === "DOMContentLoaded") domReady = fn; },
 };
 
@@ -122,6 +140,10 @@ const driver = `
   View._t.setMode("2d");
   await sleep(20);
   assert(svg.attrs.viewBox === "0 0 1515 1051", "viewBox 5F");
+  // Aspect funnel: dropping to 2D must rewrite the stage's box ratio from
+  // the wider projected 3D ratio to this floor map's own ratio.
+  assert(el("stage").style.aspectRatio === "1515 / 1051",
+    "2D stage aspect: " + el("stage").style.aspectRatio);
   const paths = findAll(svg, (n) => n.tag === "path");
   assert(paths.length >= 2, "casing+core");
   const kx = 1515 / 6062, ky = 1051 / 4205;
@@ -146,7 +168,7 @@ const driver = `
   assert(View._t.get().mode === "3d", "mode 3d");
   assert(findAll(svg, (n) => n.tag === "polygon").length >= 4, "slab sides");
   assert(findAll(svg, (n) => n.tag === "text")
-    .some((t) => t.textContent.includes("上到 6F")), "connector label");
+    .some((t) => t.textContent.includes("Up to 6F")), "connector label");
   View._t.setTilt(1.0);
   View._t.setTilt(0.45);
   View._t.setMode("2d");
@@ -182,8 +204,22 @@ const driver = `
     "connector endpoints: " + line.attrs.x1 + "," + line.attrs.y1 +
     " -> " + line.attrs.x2 + "," + line.attrs.y2);
   const lbl = findAll(svg, (n) => n.tag === "text").map((t) => t.textContent);
-  assert(lbl.some((t) => t.includes("下到 5F")), "down label: " + lbl);
+  assert(lbl.some((t) => t.includes("Down to 5F")), "down label: " + lbl);
   View._t.setMode("2d");
+
+  // Size protocol: repeated unchanged measurements send nothing (dedupe on
+  // the exact (w,h) pair); a changed measurement re-notifies exactly once.
+  const sizeMsgs = () => sent.filter(
+    (m) => m.method === "ui/notifications/size-changed");
+  const nBefore = sizeMsgs().length;
+  View._t.reportSize();
+  View._t.reportSize();
+  assert(sizeMsgs().length === nBefore, "unchanged size must not re-notify");
+  docRect.height += 120;
+  View._t.reportSize();
+  assert(sizeMsgs().length === nBefore + 1, "changed size must notify once");
+  assert(sizeMsgs()[nBefore].params.height === 640, "reported new height");
+  docRect.height -= 120;
 
   // forced render throw -> automatic 2D fallback (flag is one-shot:
   // render3D eats it, the fallback render2D runs clean)

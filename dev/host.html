@@ -130,6 +130,14 @@ window.addEventListener("message", (ev) => {
     reply(m.id, {});
   } else if (m.method === "ui/open-link") {
     fail(m.id, "open-link not simulated by this harness");
+  } else if (m.method === "ui/notifications/size-changed") {
+    // Honor params.height like a real host would (clamped by its own cap,
+    // which the maxHeight control approximates on the app side).
+    const h = Math.round((m.params && m.params.height) || 0);
+    if (h > 0) {
+      $("view").style.height = h + "px";
+      log("HARNESS", { sizeApplied: h });
+    }
   }
 });
 

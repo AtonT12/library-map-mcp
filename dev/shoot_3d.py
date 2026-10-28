@@ -35,6 +35,43 @@ def build_page(dest, view_mode):
         ' { structuredContent: %s } } }), 120); });' % data)
 
 
+def _ver_key(path):
+    """Numeric-aware rank from the version dir name (155.0.8059.85 -> (155,0,8059,85))."""
+    name = os.path.basename(os.path.dirname(path))
+    try:
+        parts = tuple(int(p) for p in name.split('.')[:4])
+        while len(parts) < 4:
+            parts += (0,)
+        return parts
+    except ValueError:
+        return (0, 0, 0, 0)
+
+
+def _browser_candidates():
+    # Never trust one browser path: the stock Chrome launcher stub exits
+    # silently when its versioned payload is missing (interrupted auto-
+    # update), which looks exactly like "no screenshot written". Prefer the
+    # configured path, then fall back to any newer Chromium on the box --
+    # Edge ships the same Blink engine and honours every flag used here.
+    cands = []
+    root = os.path.dirname(os.path.dirname(CHROME))
+    if os.path.isdir(root):
+        cands += [os.path.join(d, 'chrome.exe')
+                  for d in os.listdir(root)
+                  if os.path.isfile(os.path.join(d, 'chrome.exe'))]
+    edge_root = r"C:\Program Files (x86)\Microsoft\Edge\Application"
+    if os.path.isdir(edge_root):
+        cands += [os.path.join(d, 'msedge.exe')
+                  for d in os.listdir(edge_root)
+                  if os.path.isfile(os.path.join(d, 'msedge.exe'))]
+    out, seen = [], set()
+    for c in [CHROME] + sorted(cands, key=_ver_key, reverse=True):
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
+
+
 def shoot(dest, width, height, view_mode, tag):
     os.makedirs(OUT, exist_ok=True)
     page = os.path.join(OUT, '_shoot_%s.html' % tag)
@@ -43,12 +80,16 @@ def shoot(dest, width, height, view_mode, tag):
     png = os.path.join(OUT, 'view_3d_%s.png' % tag)
     if os.path.exists(png):
         os.remove(png)
-    subprocess.run([
-        CHROME, '--headless=new', '--disable-gpu', '--hide-scrollbars',
-        '--screenshot=' + png, '--window-size=%d,%d' % (width, height),
-        '--virtual-time-budget=4000', '--default-background-color=20242aff',
-        'file:///' + page.replace('\\', '/'),
-    ], capture_output=True, timeout=180)
+    for exe in _browser_candidates():
+        subprocess.run([
+            exe, '--headless=new', '--disable-gpu', '--hide-scrollbars',
+            '--screenshot=' + png, '--window-size=%d,%d' % (width, height),
+            '--virtual-time-budget=4000', '--default-background-color=20242aff',
+            'file:///' + page.replace('\\', '/'),
+        ], capture_output=True, timeout=180)
+        if os.path.exists(png) and os.path.getsize(png) > 0:
+            print('used browser:', exe)
+            break
     os.remove(page)
     print('wrote', png, os.path.exists(png))
 
