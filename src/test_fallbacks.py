@@ -23,8 +23,11 @@ import mcp_server
 FROZEN = {
     "map_Resercher": 1483239,
     "same_W522": 1661805,
-    "cross_N607": [1626430, 1509219],  # refreeze 2026-10-15: 6F walls cleared + 5F #8 removed
-    "cross_QA76": [1626430, 1507120],
+    # refreeze 2026-10-28: hand-drawn wall era + door-spine routing (N606
+    # door gap, N507B north door, fire-exit nudges) -- 6F leg renders moved
+    # with the route geometry; 5F legs unchanged (byte-identical).
+    "cross_N607": [1626430, 1500011],
+    "cross_QA76": [1626430, 1511902],
 }
 
 

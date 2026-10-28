@@ -184,9 +184,11 @@ def render_view_test():
 #   * the line does not wander off absurdly               (efficient)
 #
 # The authoritative efficiency measure (route length vs the shortest
-# WALKABLE path) lives in dev/route_quality.py -- it needs a free-space
-# search and is too slow for the CI gate. The ratio here is a cheap smoke
-# check against the straight line, with a deliberately generous budget.
+# WALKABLE path) lives in dev/route_quality.py. This smoke check uses the
+# SAME denominator (spec mapping: "far 绕行比 -> 换分母为可走最短路"), with a
+# deliberately generous budget. The old euclid denominator is deprecated
+# (spec B4): two points on opposite sides of a wall have a tiny straight
+# line that nobody can walk, so it flagged perfectly good routes.
 # ---------------------------------------------------------------------------
 WALL_CLEARANCE_PX = 6        # a route segment must stay this far from any wall
 SPINE_MIN_MARGIN_PX = 20     # spine edges must stay this far from any wall
@@ -207,6 +209,42 @@ DETOUR_BUDGET_RATIO = float(os.environ.get("WALL_DETOUR_BUDGET_RATIO", "2.5"))
 # deduped on the NAME, which silently merged the two distinct "Phone
 # Booth" rows once the sweep started routing by id.
 DETOUR_BUDGET_DEFAULT = 6
+
+
+# --- walkable shortest path (the smoke denominator) -----------------------
+# Reuses dev/route_quality.py's FreeSpace raster: an INDEPENDENT
+# implementation (it never touches the router's graph), which is the
+# "second opinion" the ROUTE_QUALITY_SPEC asks for. Cached per floor and
+# per leg start point -- the sweep has only a handful of distinct starts
+# (origin anchors + transit landings), so this costs a few Dijkstra runs,
+# not one per leg.
+_GRID_CACHE = {}
+_WALK_CACHE = {}
+
+
+def _free_grid(floor):
+    if floor not in _GRID_CACHE:
+        # Loaded by explicit file path (dev/ is a sibling of src/, not an
+        # import package) so static analysers need not resolve the name.
+        import importlib.util as _ilu
+        _path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             '..', 'dev', 'route_quality.py')
+        _spec = _ilu.spec_from_file_location('_route_quality', _path)
+        _mod = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        _GRID_CACHE[floor] = _mod.FreeSpace(floor, library.CORRIDORS[floor])
+    return _GRID_CACHE[floor]
+
+
+def _walkable_length(floor, a, b):
+    """Shortest walkable length in px from a to b on `floor`, or None."""
+    grid = _free_grid(floor)
+    key = (floor, round(a[0]), round(a[1]))
+    if key not in _WALK_CACHE:
+        _WALK_CACHE[key] = grid.walk_lengths_from(a)
+    lengths, _ = _WALK_CACHE[key]
+    tgt = grid.snap(*b)
+    return lengths.get(tgt) if tgt is not None else None
 
 
 def _pt_seg_dist(p, a, b):
@@ -323,11 +361,15 @@ def all_locations_wall_test():
                 # Per-leg detour ratio: a whole-route ratio lets good legs
                 # mask bad ones. This is a cheap smoke bound only -- the
                 # authoritative measure is dev/route_quality.py L3.
-                straight = math.hypot(pts[-1][0] - pts[0][0],
+                # Denominator is the shortest WALKABLE path, not the euclid
+                # line (spec B4: the euclid denominator is deprecated).
+                walk = _walkable_length(floor, pts[0], pts[-1])
+                if walk is None:
+                    walk = math.hypot(pts[-1][0] - pts[0][0],
                                       pts[-1][1] - pts[0][1])
-                if straight >= MIN_LEG_STRAIGHT_PX:
+                if walk >= MIN_LEG_STRAIGHT_PX:
                     length = sum(math.dist(a, b) for a, b in zip(pts, pts[1:]))
-                    ratio = length / straight
+                    ratio = length / walk
                     if ratio > DETOUR_BUDGET_RATIO:
                         far.append((start, pid, floor, round(ratio, 2)))
                 segs = list(zip(pts, pts[1:]))
