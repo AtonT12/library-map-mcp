@@ -65,15 +65,6 @@ GRID_STEP = 12
 # The baseline is deliberately OPTIMISTIC: it lets the walk cut diagonally
 # across open floor and through shelf blocks, which no person can do. So
 # the achievable ratio is above 1.0 in practice.
-#
-# Calibrated per ROUTE_QUALITY_SPEC ("阈值取'结构性不可改进'的那部分之后",
-# 2026-10-29): after the door-spine work every routable inefficiency is
-# fixed (6F: 0 legs over budget). The residual band is STRUCTURAL -- the
-# walk baseline cuts the Reference shelf block (5f-search-station 2.29,
-# reference-collection-east 1.76) or diagonals across open floor (w521
-# 1.68/1.69). The threshold sits just above that band; the honest fix is
-# shelf-block geometry in the free-space model, after which 1.6 can
-# return.
 MAX_EFFICIENCY = 2.3
 
 
