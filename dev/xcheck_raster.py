@@ -24,7 +24,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 import library  # noqa: E402
 from PIL import Image, ImageDraw  # noqa: E402
 
-CLEARANCE = 6  # must stay identical to test.py WALL_CLEARANCE_PX
+# One owner (library.py): the halo the raster check draws is the clearance the
+# router actually enforces, not a re-typed copy that can drift from it.
+CLEARANCE = library.WALL_CLEARANCE_PX
 
 
 def build_masks(floor):

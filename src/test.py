@@ -190,7 +190,18 @@ def render_view_test():
 # (spec B4): two points on opposite sides of a wall have a tiny straight
 # line that nobody can walk, so it flagged perfectly good routes.
 # ---------------------------------------------------------------------------
-WALL_CLEARANCE_PX = 6        # a route segment must stay this far from any wall
+# Clearance policy has ONE owner: library.py. Both numbers are imported
+# rather than re-typed, so the gate always measures the rule the router
+# actually enforces. A hand-copied constant drifts silently: tighten routing
+# and legal routes start failing, loosen only the test and bad routes stop
+# being caught -- either way the red/green stops meaning anything.
+# The *_SPEC_* literals are the contract as written in ROUTE_QUALITY_SPEC.md
+# ("every segment >= 6px from a wall; first/last segment exempt only within
+# 12px of its endpoint"). The assert below turns a silent drift into a loud
+# failure that names the file to update.
+WALL_CLEARANCE_SPEC_PX = 6
+ENDPOINT_EPS_SPEC_PX = 12
+WALL_CLEARANCE_PX = library.WALL_CLEARANCE_PX
 SPINE_MIN_MARGIN_PX = 20     # spine edges must stay this far from any wall
 MIN_LEG_STRAIGHT_PX = 100.0  # legs shorter than this are exempt (guards div-by-zero)
 # The doorway exemption is LOCAL: only the part of the first/last segment
@@ -198,7 +209,12 @@ MIN_LEG_STRAIGHT_PX = 100.0  # legs shorter than this are exempt (guards div-by-
 # whole first and last segment, which hid every real problem there -- and
 # the router's own penalty counter skipped the same segments, so neither
 # side of the test noticed.
-ENDPOINT_EPS_PX = 12
+ENDPOINT_EPS_PX = library.ENDPOINT_EPS
+assert (WALL_CLEARANCE_PX, ENDPOINT_EPS_PX) == (
+    WALL_CLEARANCE_SPEC_PX, ENDPOINT_EPS_SPEC_PX), (
+    f"router uses clearance {WALL_CLEARANCE_PX}px / eps {ENDPOINT_EPS_PX}px, "
+    f"spec says {WALL_CLEARANCE_SPEC_PX}px / {ENDPOINT_EPS_SPEC_PX}px -- "
+    "update ROUTE_QUALITY_SPEC.md and the *_SPEC_PX literals together")
 DETOUR_BUDGET_RATIO = float(os.environ.get("WALL_DETOUR_BUDGET_RATIO", "2.5"))
 # Documented residuals, as a cheap smoke bound only. The real efficiency
 # budget is dev/route_quality.py L3 (route length / shortest walkable

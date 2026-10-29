@@ -70,13 +70,17 @@ SAMPLE_STEP = 150        # spacing of branch-off candidates along each spine edg
 CONNECTOR_SLACK = 400    # accept visible connectors up to this much longer than the shortest
 WALL_PENALTY = 1000      # cost multiplier for a segment that crosses a wall
 # P5: walls count inflated by clearance in visibility/graph checks below.
-# Same value and meaning as WALL_CLEARANCE_PX in src/test.py (kept in sync
-# by hand; the test asserts inner route segments stay this far from walls).
+# SINGLE OWNER of the clearance policy: src/test.py and dev/xcheck_raster.py
+# import this value instead of re-typing it, and src/test.py asserts it still
+# matches the contract in ROUTE_QUALITY_SPEC.md (every segment >= 6px from a
+# wall). Changing the number here is a contract change -- update the spec in
+# the same commit or the gate fails on purpose.
 WALL_CLEARANCE_PX = 6
 # P5: endpoint epsilon — connectors may graze (not cross) walls within this
 # distance of a route endpoint (room entries sit in door gaps by design).
 # Must stay below the narrowest real doorway half-width (24.4px, 6F
 # calib_report) so it can never punch through a wall beside a door.
+# Single owner as well: the tests import this instead of copying 12.
 ENDPOINT_EPS = 12
 
 
