@@ -9,8 +9,9 @@ Each floor is a list of axis-aligned rectangles that together cover the plan
 area. The 5F plan is L-shaped (a full-width north wing plus a narrow west
 wing), the 6F plan is a single rectangle.
 
-Measured from the wall-coloured structural ink of the base maps; see
-dev/extract_outline.py for the probe that produced these numbers.
+Measured from the wall-coloured structural ink of the base maps: per scan
+row, the long contiguous ink run that belongs to the building (isolated
+legend glyphs are excluded), unioned into the rectangles below.
 """
 
 # floor -> list of (x0, y0, x1, y1) in full-res pixel coords

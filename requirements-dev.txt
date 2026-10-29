@@ -1,5 +1,5 @@
 # Dev-only tooling deps. The audit and review tools under dev/ (wall_audit.py,
-# wall_tiles.py, wall_panorama.py, mock_3d.py, xcheck_raster.py) run on
+# xcheck_raster.py, route_quality.py) run on
 # stdlib + Pillow, and Pillow is already a runtime dependency
 # (see requirements.txt). No extra dev packages are needed, so this file is
 # intentionally empty -- it exists to keep any future dev dep out of

@@ -13,8 +13,8 @@ dev/preview.html
 # ones live in src/test_route_schema.py / dev/viewer.test.js instead.
 dev/fixtures/
 
-# Generated review artifacts: wall tiles, per-floor panoramas and 3D mockups
-# (dev/wall_tiles.py, dev/wall_panorama.py, dev/mock_3d.py). Regenerate on
+# Generated review artifacts: headless view screenshots (dev/shoot_3d.py)
+# and wall-profile exports (dev/wall_audit.py --emit-json). Regenerate on
 # demand; never commit.
 review_out/
 extract_out/
