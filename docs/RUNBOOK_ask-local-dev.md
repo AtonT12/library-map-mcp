@@ -53,7 +53,7 @@ Behaviour worth knowing: transport is Streamable HTTP at `/mcp` only (no stdio/S
 
 ## 3. Client probes (pick one)
 
-**VS Code** (fastest): `.vscode/mcp.json` already points at `http://127.0.0.1:8000/mcp`. With the server running, `MCP: List Servers` → reconnect `nyush-library` → confirm the 7 tools. `D:\Codes\RITS\opencode.json` points at the same URL — known limitation: tools work, the interactive view does not (terminal hosts ignore `_meta.ui`; that is the legacy L2 path).
+**VS Code** (fastest): `.vscode/mcp.json` already points at `http://127.0.0.1:8000/mcp`. With the server running, `MCP: List Servers` → reconnect `nyush-library` → confirm the 8 tools. `D:\Codes\RITS\opencode.json` points at the same URL — known limitation: tools work, the interactive view does not (terminal hosts ignore `_meta.ui`; that is the legacy L2 path).
 
 **Raw JSON-RPC** (see the wire): responses arrive as SSE — parse the `data:` lines. The session keys off the `mcp-session-id` response header captured from step 1. In PowerShell, `curl` is an alias for `Invoke-WebRequest` — call **`curl.exe`**.
 
@@ -105,10 +105,10 @@ Manual checklist — there is **no Playwright** in this project (deliberate); th
 | V5 | Place detail | tapping a station opens the side panel with the right record |
 | V6 | Floor tabs | 5F ⇄ 6F switch re-renders the correct base map |
 | V7 | Hi-res tiles | zoom past the 0.35 threshold triggers a `get_map_view` tile (800 ms debounce) |
-| 3D | Oblique | off by default; extrudes slabs, circles stay round / text upright, non-current floor dims to 0.45 |
+| 3D | Oblique | **on by default** (a flat plan cannot show a floor change); extrudes slabs, circles stay round / text upright, non-current floor dims to 0.45. `view_mode="2d"` on the tool call asks for the flat plan |
 | L3 | Error bar | the three `tool-result` flavours never white-screen; 3 s handshake timeout shows Retry |
 | V9 | Theme | light/dark both look right |
-| V8 | Height | `maxHeight = 720`: long content **scrolls inside the frame**, not clipped |
+| V8 | Height | the frame grows to the host's `maxHeight` and long content **scrolls inside it**, not clipped (Ask: min(760, max(360, 72 % of viewport))) |
 
 ## 5. Automated suites
 
@@ -222,14 +222,14 @@ Saving drives the row `pending → pulling → running` (polls every 5 s). The p
 
 Press **Start** (or `POST /mcp-servers/:id/start`). Wait out the **30 s** readiness window, then check in order (*all verified*):
 
-1. Status `running`, Last error empty; Logs show `assets ok` + `Uvicorn running on http://0.0.0.0:8000`.
-2. Tools lists all seven: `get_library_map`, `get_library_directions`, `search_locations`, `get_route`, `get_location_detail`, `get_library_status`, `get_map_view`.
-3. App binding tags: the four structured tools carry the cyan **MCP App** tag (`Renders ui://nav/library-view.html in the chat`); the two legacy ones have none; `get_map_view` shows **app only**. API equivalent: `GET /mcp-servers/:id/apps` returns the one `ui://` resource.
+1. Status `running`, Last error empty; Logs show the FastMCP banner + `Uvicorn running on http://0.0.0.0:8000`. A *passing* asset self-check prints nothing (see §2) — `assets ok` appears only when you run `selfcheck.py` directly.
+2. Tools lists all eight: `get_library_map`, `get_library_directions`, `search_locations`, `get_route`, `get_route_3d`, `get_location_detail`, `get_library_status`, `get_map_view`.
+3. App binding tags: the four structured tools carry the cyan **MCP App** tag (`Renders ui://nav/library-view.html in the chat`); the two legacy ones and `get_route_3d` have none (it returns a PNG, not a view); `get_map_view` shows **app only**. API equivalent: `GET /mcp-servers/:id/apps` returns the one `ui://` resource.
 4. **Bind**: Edit the row — Render MCP Apps on (on by default), Allowed app origins (CSP) **empty** (the view may only talk to its own server through the host proxy — desired). Then Admin → Experiences → pick a row (e.g. `ask-roary`) → MCP Tools → Add → `nyush-library`. Binding takes effect on the next chat request; no deploy.
 
 ## 12. Smoke test — in the browser
 
-Open the experience's chat (`http://localhost:5174`) and ask **"How do I get from the Entrance to N607?"** (cross-floor — exercises the two-image path). Check: the tool is really called (answer uses real data); the view renders **inline** and scrolls within its **720 px** ceiling (frame scrolls, not clips); light **and** dark themes; a 5F→6F trip shows two floor maps.
+Open the experience's chat (`http://localhost:5174`) and ask **"How do I get from the Entrance to N607?"** (cross-floor — exercises the transit leg). Check: the tool is really called (answer uses real data); the view renders **inline** and stays within the host's height cap (frame scrolls, not clips); light **and** dark themes; a 5F→6F trip shows the stair link and can switch floors.
 
 **Gotcha found in the 2026-10-14 pass**: for natural phrasing the model prefers the legacy `get_library_directions` (returns image markdown, no widget). The app layer engages when a **structured** tool (`get_route` & co.) is the one called — steer the prompt accordingly (§13).
 
@@ -288,7 +288,8 @@ Treat every §12 observation made in the browser as first-hand evidence for thes
 | Start ends `failed` with a pull error | no local image under that exact tag, or backend can't reach Docker (`DOCKER_SOCKET` pipe wrong / daemon down) |
 | Running, but Tools empty | port or endpoint path wrong — must be `8000` + `/mcp` |
 | Tools listed, but no cyan tags | server started with `ENABLE_MCP_APPS=0`, or patched `appsEnabled:false` |
-| Container starts and exits, logs say `asset check failed` | `src/static/*.webp` missing (only if the image was hand-cut; normal builds generate it) |
+| Container starts and exits, logs say `asset check failed` | a checked asset is missing or unparseable: `maps/*_base.jpg`, `corridors.json`, `locations.csv`, or a bad `src/route_overrides.json` key. Run `python src/selfcheck.py` — it prints the same list |
+| Server runs, but reading `ui://nav/library-view.html` fails with `… missing: run scripts/build_static.py` | `src/static/*_small.webp` was never generated. The self-check does **not** cover this file (it is a build artifact, generated in `docker build`), so a hand-cut image can start fine and fail on the first view request |
 | App renders stale after a rebuild | `ui://` digest cache; locally built image has no `RepoDigests` — restart the server row and retry |
 | Chat gets images but **no widget** | model chose legacy `get_library_directions` — steer the prompt to a structured tool (§12/§13) |
 | Scripted smoke: `"Invalid or expired token"` | guest token lifetime is ~15 min — re-mint `/auth/guest` |
