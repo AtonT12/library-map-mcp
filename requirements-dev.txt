@@ -1,6 +1,7 @@
-# Dev-only tooling deps. The audit and review tools under dev/ (wall_audit.py,
-# xcheck_raster.py, route_quality.py) run on
-# stdlib + Pillow, and Pillow is already a runtime dependency
-# (see requirements.txt). No extra dev packages are needed, so this file is
-# intentionally empty -- it exists to keep any future dev dep out of
-# requirements.txt / Dockerfile.
+# Dev-only tooling deps. Runtime dependencies stay in requirements.txt and
+# are the only ones installed by the Docker image.
+#
+# Playwright drives the deterministic 402px browser matrix in
+# dev/browser_test.py. Install the browser once with:
+#   python -m playwright install chromium
+playwright==1.64.1

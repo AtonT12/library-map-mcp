@@ -27,7 +27,7 @@ them; unknown fields inside known messages are ignored (optional-read).
 | H→V | notification | `ui/notifications/tool-input` | `{arguments}` (required before tool-result) |
 | H→V | notification | `ui/notifications/tool-input-partial` | `{arguments}` (0..n, streaming; view ignores) |
 | H→V | notification | `ui/notifications/tool-result` | `CallToolResult` (`{content, structuredContent?, _meta?}`) |
-| H→V | notification | `ui/notifications/tool-cancelled` | `{reason}` → view shows error bar + retry |
+| H→V | notification | `ui/notifications/tool-cancelled` | `{reason}` → view shows error bar + Reset |
 | V→H | request | `tools/call` | `{name, arguments}` → standard `CallToolResult` (host proxies to server; MUST reject when visibility lacks `"app"`) |
 | V→H | request | `resources/read` | available; unused (tiles go through `get_map_view`) |
 | V→H | notification | `ui/notifications/size-changed` | `{width, height}` (sent after each render) |
@@ -50,7 +50,18 @@ them; unknown fields inside known messages are ignored (optional-read).
 Full `HostContext` also defines `toolInfo/styles/displayMode/locale/…`;
 `viewer.js` optional-reads only the two above. `host-context-changed`
 carries a **partial merged** into state (spec: "View SHOULD merge").
-Never white-screens on a missing field.
+Never white-screens on a missing field. Missing `theme` means **light**:
+the view must not independently follow `prefers-color-scheme`. A theme
+already pushed before the initialize response wins over the (older)
+initialize context.
+
+## Production UI surface
+
+The shipped `ui://` view contains only the map, floor tabs, the 2D/3D
+toggle, Reset, a marker-detail overlay, and actionable error text. It
+must not contain `ping`/`status`/`tilt` controls, raw JSON, or a route
+step list; the host chat owns the route narrative. `get_location_detail`
+takes exactly `{place_id: string}`.
 
 ## Order / timing
 
@@ -60,8 +71,11 @@ Never white-screens on a missing field.
    `tool-result` only.
 3. `tool-result` data precedence: `structuredContent` → parse text block
    as JSON → raw text → error bar (never blank iframe).
-4. `ui/initialize` unanswered for 3 s → error bar + Retry button
-   (re-runs boot; `initialized` is re-sent, ids keep incrementing).
+4. `ui/initialize` unanswered for 3 s → error bar + **Reconnect** button
+   (re-runs boot). A failed initialize does **not** send `initialized`
+   and does not accept a late tool result that would hide the error.
+   The normal map control is **Reset** (restores mode/floor/pan/zoom);
+   it never re-runs the handshake or reloads the iframe.
 
 ## Pinned values (assumptions to re-verify on Ask)
 

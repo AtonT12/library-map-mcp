@@ -97,18 +97,19 @@ Verified outcome: negotiates `2025-06-18`; `resources/list` contains `ui://nav/l
 
    In-session extras: `tool-input` sends arguments first; `tool-result (structured)/(text-only)/(empty)` exercise the failure-ish shapes; `push host-context-changed` re-applies theme/`maxHeight`; `reload view` reboots the iframe.
 
-Manual checklist — there is **no Playwright** in this project (deliberate); this list *is* the UI regression, run by hand after any `viewer.js` change:
+Deterministic browser layer: `dev/browser_test.py` drives the generated view in real Chromium at 360/402/760/1100 CSS px, including visible 3D/2D pixels, floor switching, pan/zoom/Reset, theme, marker details, layout overflow, tile ordering, and the handshake error state. The manual checklist below is the **real Ask host** layer, run after the browser suite:
 
 | # | Area | What to check |
 |---|---|---|
-| V4 | Pan / zoom | wheel zoom centred on cursor; pan doesn't drift |
-| V5 | Place detail | tapping a station opens the side panel with the right record |
-| V6 | Floor tabs | 5F ⇄ 6F switch re-renders the correct base map |
-| V7 | Hi-res tiles | zoom past the 0.35 threshold triggers a `get_map_view` tile (800 ms debounce) |
-| 3D | Oblique | **on by default** (a flat plan cannot show a floor change); extrudes slabs, circles stay round / text upright, non-current floor dims to 0.45. `view_mode="2d"` on the tool call asks for the flat plan |
-| L3 | Error bar | the three `tool-result` flavours never white-screen; 3 s handshake timeout shows Retry |
-| V9 | Theme | light/dark both look right |
-| V8 | Height | the frame grows to the host's `maxHeight` and long content **scrolls inside it**, not clipped (Ask: min(760, max(360, 72 % of viewport))) |
+| V4 | Pan / zoom | wheel zoom centred on cursor; pan doesn't drift; 3D leaves wheel/drag to the chat (no map movement) |
+| V5 | Place detail | tapping a marker opens the detail overlay with the right record; request uses `place_id` |
+| V6 | Floor tabs | 5F ⇄ 6F switch re-renders the correct base map with a route-focused viewBox |
+| V7 | Hi-res tiles | zoom past the 0.35 threshold triggers a `get_map_view` tile (800 ms debounce); route stays above the tile |
+| 3D | Oblique | **on by default** (a flat plan cannot show a floor change); extrudes slabs, circles stay round / text upright, non-current floor dims to 0.72. `view_mode="2d"` asks for the flat plan |
+| Reset | Map control | restores requested 3D/2D mode, first floor, initial pan/zoom, and clears tiles/errors; never re-runs the handshake |
+| L3 | Error bar | the three `tool-result` flavours never white-screen; 3 s handshake timeout shows **Reconnect**, not Retry |
+| V9 | Theme | host light wins over OS dark; host changes update the view; missing theme defaults to light |
+| V8 | Height / width | at ~402 CSS px there is no horizontal scroll, controls stay on one row, and the map keeps a useful height; long error text stays inside the frame |
 
 ## 5. Automated suites
 
@@ -120,8 +121,11 @@ $env:PYTHONPATH = 'src'
 & '..\.venv-daniel\Scripts\python.exe' src\test.py
 & '..\.venv-daniel\Scripts\python.exe' src\test_fallbacks.py
 & '..\.venv-daniel\Scripts\python.exe' src\test_route_schema.py
+& '..\.venv-daniel\Scripts\python.exe' src\test_api_contract.py
 & '..\.venv-daniel\Scripts\python.exe' src\selfcheck.py
 node dev\viewer.test.js
+& '..\.venv-daniel\Scripts\python.exe' scripts\build_preview.py
+& '..\.venv-daniel\Scripts\python.exe' dev\browser_test.py
 ```
 
 ```bash
@@ -129,11 +133,21 @@ cd /d/Codes/RITS/map-mcp/daniel-library-mcp
 PYTHONPATH=src ../.venv-daniel/Scripts/python.exe src/test.py
 PYTHONPATH=src ../.venv-daniel/Scripts/python.exe src/test_fallbacks.py
 PYTHONPATH=src ../.venv-daniel/Scripts/python.exe src/test_route_schema.py
+PYTHONPATH=src ../.venv-daniel/Scripts/python.exe src/test_api_contract.py
 PYTHONPATH=src ../.venv-daniel/Scripts/python.exe src/selfcheck.py
 node dev/viewer.test.js
+PYTHONPATH=src ../.venv-daniel/Scripts/python.exe scripts/build_preview.py
+PYTHONPATH=src ../.venv-daniel/Scripts/python.exe dev/browser_test.py
 ```
 
-Gotchas: `test.py` is the heaviest (wall audit over ~220 routes); wall budgets are env vars keeping documented residuals — `WALL_CROSSING_BUDGET=0`, `WALL_CLEARANCE_BUDGET=0`, `WALL_DETOUR_BUDGET=6`. `test_fallbacks.py` includes **4 byte-frozen image lengths** — they must not change unless you intend a re-freeze. `test_route_schema.py` starts a real server on port **18083** and **temporarily renames** `corridors.json` + `maps/5f_base.jpg` (restored in `finally`) — never run it concurrently with other data-touching work. CI (`.github/workflows/test.yaml`) runs the three Python suites + the viewer test + **two independent route auditors** + `docker build` on py3.11.
+One-time browser setup (dev-only; never in the runtime image):
+
+```bash
+pip install -r requirements-dev.txt
+python -m playwright install chromium
+```
+
+Gotchas: `test.py` is the heaviest (wall audit over ~220 routes); wall budgets are env vars keeping documented residuals — `WALL_CROSSING_BUDGET=0`, `WALL_CLEARANCE_BUDGET=0`, `WALL_DETOUR_BUDGET=6`. `test_fallbacks.py` includes **4 byte-frozen image lengths** — they must not change unless you intend a re-freeze. `test_route_schema.py` starts a real server on port **18083** and **temporarily renames** `corridors.json` + `maps/5f_base.jpg` (restored in `finally`) — never run it concurrently with other data-touching work. `browser_test.py` refuses a stale `dev/preview.html`; run `build_preview.py` after any `viewer.js`/`template.py` change. CI (`.github/workflows/test.yaml`) runs the four Python suites + the viewer test + **two independent route auditors** + Docker build, plus a separate `view-browser` job on py3.11/Chromium.
 
 The two auditors exist because a test that shares its implementation with the code under test cannot catch a shared mistake — they compute the same properties a second way and fail on any disagreement:
 
@@ -229,7 +243,15 @@ Press **Start** (or `POST /mcp-servers/:id/start`). Wait out the **30 s** readin
 
 ## 12. Smoke test — in the browser
 
-Open the experience's chat (`http://localhost:5174`) and ask **"How do I get from the Entrance to N607?"** (cross-floor — exercises the transit leg). Check: the tool is really called (answer uses real data); the view renders **inline** and stays within the host's height cap (frame scrolls, not clips); light **and** dark themes; a 5F→6F trip shows the stair link and can switch floors.
+Open the experience's chat (`http://localhost:5174`) and use the review steering prompt:
+
+```text
+Call the get_route tool with destination N607 and show its interactive map. Start at the Entrance.
+```
+
+Check: the tool is really `get_route` (not `get_route_3d` or the legacy image tools); the view renders **inline**; the 3D model is visible (not merely present in the DOM); 5F/6F flat views show the route rather than the legend; floor switching, pan/zoom and Reset work; light/dark follows the host; marker details work; and the embedded UI has no repeated route prose or `ping/status/tilt` debug controls.
+
+**Narrow-width measurement (PR #8 review):** do not infer width from a screenshot. Resize the Ask side/resources panels until the iframe's `getBoundingClientRect().width` is **402 ± 1 CSS px**, then record the outer viewport, sidebar/resources widths, iframe rect, DPR, and `document.documentElement.scrollWidth/clientWidth`. There must be no horizontal scroll and the floor/2D/Reset controls must remain on one row.
 
 **Gotcha found in the 2026-10-14 pass**: for natural phrasing the model prefers the legacy `get_library_directions` (returns image markdown, no widget). The app layer engages when a **structured** tool (`get_route` & co.) is the one called — steer the prompt accordingly (§13).
 
@@ -306,7 +328,7 @@ Production is the same mechanic without the local shortcut: CI pushes the image 
 |---|---|
 | Server entry | `src/mcp_server.py` (Streamable HTTP, `/mcp`, `PORT`) |
 | Resource | `ui://nav/library-view.html` (`text/html;profile=mcp-app`) |
-| Tools | 7 (see §11) |
+| Tools | 8 (see §11) |
 | Dev harness | `dev/host.html`, `dev/preview.html` (generated), `dev/view.html`, `dev/HOST_CONTRACT.md` |
 | Regenerate preview | `<VENV> scripts\build_preview.py` |
 | Serve harness | `cd dev && <VENV> -m http.server 8077` |

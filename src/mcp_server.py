@@ -1,10 +1,12 @@
 import base64
+import io
 import os
 import sys
 from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import CallToolResult, ImageContent, TextContent
+from PIL import Image
 from models import LibraryStatus, LocationSearchResult, Place, RoutePlan
 
 import library
@@ -24,6 +26,26 @@ mcp = FastMCP(
     port=int(os.environ.get("PORT", "8000")),
 )
 
+_MIME_BY_FORMAT = {
+    "WEBP": "image/webp",
+    "JPEG": "image/jpeg",
+    "PNG": "image/png",
+}
+
+
+def _image_mime(data):
+    """Declare the format the bytes actually contain.
+
+    The legacy tools share the same renderer as the App path, which emits
+    WebP when ENABLE_MCP_APPS is on and JPEG when it is off. A hardcoded
+    image/jpeg makes clients decode the App-path bytes incorrectly.
+    """
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            return _MIME_BY_FORMAT.get(img.format, "application/octet-stream")
+    except Exception:
+        return "application/octet-stream"
+
 
 @mcp.tool()
 def get_library_map(query: str) -> CallToolResult:
@@ -42,10 +64,11 @@ def get_library_map(query: str) -> CallToolResult:
             'Bloomberg Terminal'). Acronyms and minor typos are tolerated.
 
     Returns:
-        A short text description plus one annotated floor-map image (JPEG) with
-        a red marker on the location. For a facility found on both floors the
-        text says which other floor also has one. Always show the returned
-        image to the user.
+        A short text description plus one annotated floor-map image with a
+        red marker on the location. The image is WebP when the interactive
+        App view is enabled and JPEG when the App kill-switch is active. For
+        a facility found on both floors the text says which other floor also
+        has one. Always show the returned image to the user.
     """
     try:
         result_msg, image_bytes = library.search_and_draw(query)
@@ -61,7 +84,7 @@ def get_library_map(query: str) -> CallToolResult:
             ImageContent(
                 type="image",
                 data=base64.b64encode(image_bytes).decode("ascii"),
-                mimeType="image/jpeg",
+                mimeType=_image_mime(image_bytes),
             ),
         ],
     )
@@ -103,15 +126,17 @@ def get_library_directions(destination: str, start: str = None) -> CallToolResul
             N509"). If omitted, the route begins at the library Entrance & Exit.
 
     Returns:
-        Text directions plus annotated floor-map image(s) (JPEG) showing the
-        route -- green marker = start, red marker = destination. Routes follow
-        the corridors and avoid walls. A trip that
-        stays on one floor returns ONE map. A trip between 5F and 6F returns TWO
-        maps (one per floor); the text names the EXACT vertical connection to
-        use (e.g. "Central Stairs", "West Stairs", or "Elevator"), chosen by
-        proximity. When relaying directions, name only that specific connection
-        -- do NOT say a vague "stairs/elevator" or invent a different one. Repeat
-        the floor names exactly as given and present every image, in order.
+        Text directions plus annotated floor-map image(s) showing the route
+        -- green marker = start, red marker = destination. Images are WebP
+        when the interactive App view is enabled and JPEG when the App
+        kill-switch is active. Routes follow the corridors and avoid walls. A
+        trip that stays on one floor returns ONE map. A trip between 5F and
+        6F returns TWO maps (one per floor); the text names the EXACT vertical
+        connection to use (e.g. "Central Stairs", "West Stairs", or
+        "Elevator"), chosen by proximity. When relaying directions, name only
+        that specific connection -- do NOT say a vague "stairs/elevator" or
+        invent a different one. Repeat the floor names exactly as given and
+        present every image, in order.
     """
     try:
         result_msg, images = library.get_directions(destination, start)
@@ -127,7 +152,7 @@ def get_library_directions(destination: str, start: str = None) -> CallToolResul
             ImageContent(
                 type="image",
                 data=base64.b64encode(image_bytes).decode("ascii"),
-                mimeType="image/jpeg",
+                mimeType=_image_mime(image_bytes),
             )
         )
     return CallToolResult(content=content)

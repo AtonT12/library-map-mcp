@@ -69,7 +69,10 @@ const View = (() => {
   }
 
   function esc(s) {
-    return String(s === undefined || s === null ? "" : s);
+    return String(s === undefined || s === null ? "" : s).replace(
+      /[&<>"']/g,
+      (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;",
+                 '"': "&quot;", "'": "&#39;" }[ch]));
   }
 
   // -- JSON-RPC over postMessage ---------------------------------------------
@@ -115,11 +118,10 @@ const View = (() => {
   function applyTheme() {
     const theme = hostContext && hostContext.theme;
     const de = document.documentElement;
+    // Host theme is authoritative. Missing theme means the product default
+    // is light; never fall through to the operating system preference.
     de.style.colorScheme = theme === "dark" ? "dark" : "light";
-    // Dual-path theming: an explicit host theme always wins; the system
-    // preference only applies while no explicit theme was set.
-    if (theme === "dark" || theme === "light") de.dataset.theme = theme;
-    else delete de.dataset.theme;
+    de.dataset.theme = theme === "dark" ? "dark" : "light";
   }
 
   function maxHeight() {
@@ -190,29 +192,41 @@ const View = (() => {
     stage.style.aspectRatio = `${f(w)} / ${f(h)}`;
   }
 
-  // Refit on WIDTH changes (the content is width-driven, via aspect-ratio);
-  // height-only changes (host clamping the frame) must NOT refit, otherwise
-  // grow -> report -> clamp -> refit would oscillate.
+  // Refit when the stage changes size. 3D also depends on height, while 2D
+  // content is width-driven; the 2px threshold coalesces aspect feedback
+  // without freezing a height-only host clamp.
   let fitRO = null;
+  let refitFrame = null;
+  let roFrame = null;
   function setupResizeObserver() {
     if (fitRO || typeof ResizeObserver === "undefined") return;
-    let lastW = null;
-    fitRO = new ResizeObserver(() => {
+    let lastW = null, lastH = null;
+    const run = () => {
       const stage = $("stage");
       const w = (stage && stage.clientWidth) || (window.innerWidth || 0);
-      if (lastW !== null && w === lastW) {
-        // Height-only change: keep the reported size honest, stop there.
+      const h = (stage && stage.clientHeight) || 0;
+      if (lastW !== null &&
+          Math.abs(w - lastW) <= 2 &&
+          Math.abs(h - lastH) <= 2) {
         reportSize();
         return;
       }
       lastW = w;
-      if (!route) return;
+      lastH = h;
+      if (!route || !w || !h) return;
       try {
-        if (mode === "3d") render3D();
+        if (mode === "3d") render3D(true);
         else render2D();
       } catch { /* keep the current view */ }
+    };
+    fitRO = new ResizeObserver(() => {
+      if (roFrame) return;
+      if (typeof requestAnimationFrame === "undefined") { run(); return; }
+      roFrame = requestAnimationFrame(() => {
+        roFrame = null;
+        run();
+      });
     });
-    fitRO.observe(document.documentElement);
     const stage = $("stage");
     if (stage) fitRO.observe(stage);
   }
@@ -262,7 +276,7 @@ const View = (() => {
     if (parsed.kind === "empty") {
       lastSource = "empty";
       showError("data", "no route data received", [
-        { label: "Retry", fn: () => window.location.reload() },
+        { label: "Reset", fn: () => resetView() },
       ]);
       renderData({ error: "no route data received" });
       renderContract();
@@ -287,27 +301,29 @@ const View = (() => {
       return;
     }
     route = r;
-    if (!route.legs.some((l) => l.floor === floor)) {
-      floor = route.legs[0].floor;
+    // A new plan starts from its first floor with a fresh fitted viewBox.
+    floor = route.legs[0].floor;
+    vbMemo = {};
+    if (refitFrame && typeof cancelAnimationFrame !== "undefined") {
+      cancelAnimationFrame(refitFrame);
+      refitFrame = null;
     }
     try {
       if (fullMode()) renderRoute();
       else renderData(parsed.data);
     } catch (e) {
       showError("draw", e && e.message ? e.message : String(e), [
-        { label: "Retry", fn: () => { try { renderRoute(); hideError(); } catch (e2) { /* keep bar */ } } },
+        { label: "Reset", fn: () => resetView() },
         { label: "Fall back to image", fn: () => attemptDegraded("draw failed") },
       ]);
     }
     renderContract();
-    setStatus("tool-result rendered.");
   }
 
   function onToolCancelled(params) {
     const reason = (params && params.reason) || "unknown reason";
-    setStatus(`tool cancelled: ${reason}`);
     showError("cancelled", `Tool execution was cancelled (${reason})`, [
-      { label: "Retry", fn: () => window.location.reload() },
+      { label: "Reset", fn: () => resetView() },
     ]);
   }
 
@@ -362,17 +378,102 @@ const View = (() => {
     }
     if (placeId) {
       c.setAttribute("data-pid", placeId);
+      c.setAttribute("tabindex", "0");
+      c.setAttribute("role", "button");
+      c.setAttribute("aria-label", title || placeId);
       c.style.cursor = "pointer";
       c.addEventListener("click", (ev) => { ev.stopPropagation(); showDetail(placeId); });
+      c.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") {
+          ev.preventDefault();
+          showDetail(placeId);
+        }
+      });
     }
     return c;
   }
 
+  function floorRects(f, fallbackToMap = true) {
+    const m = mapInfo(f);
+    if (!m) return [];
+    const rects = outlineOf(f);
+    if (rects && rects.length) return rects;
+    return fallbackToMap ? [[0, 0, m.fw, m.fh]] : [];
+  }
+
+  function setViewBox(svg, vb) {
+    if (!svg || !vb) throw new Error("invalid viewBox");
+    const vals = [vb.x, vb.y, vb.w, vb.h].map(Number);
+    if (!vals.every(Number.isFinite) || vals[2] <= 0 || vals[3] <= 0) {
+      throw new Error(`invalid viewBox ${vals.join(" ")}`);
+    }
+    svg.setAttribute("viewBox", vals.map((v) => +v.toFixed(2)).join(" "));
+  }
+
+  function fitVB(f) {
+    const m = mapInfo(f);
+    if (!m) return null;
+    const k = kmap(f);
+    const pts = [];
+    const leg = legByFloor(f);
+    if (leg) {
+      (Array.isArray(leg.polyline) ? leg.polyline : []).forEach((p) => {
+        if (Array.isArray(p) && p.length >= 2) {
+          pts.push([p[0] * k.kx, p[1] * k.ky]);
+        }
+      });
+      (Array.isArray(leg.steps) ? leg.steps : []).forEach((s) => {
+        if (s && Array.isArray(s.point) && s.point.length >= 2) {
+          pts.push([s.point[0] * k.kx, s.point[1] * k.ky]);
+        }
+      });
+    }
+    let x0, y0, x1, y1;
+    if (pts.length) {
+      x0 = Math.min(...pts.map((p) => p[0]));
+      y0 = Math.min(...pts.map((p) => p[1]));
+      x1 = Math.max(...pts.map((p) => p[0]));
+      y1 = Math.max(...pts.map((p) => p[1]));
+    } else {
+      const rects = floorRects(f);
+      const r = rects[0];
+      x0 = r[0] * k.kx; y0 = r[1] * k.ky;
+      x1 = r[2] * k.kx; y1 = r[3] * k.ky;
+    }
+    const span = Math.max(x1 - x0, y1 - y0, 1);
+    const pad = Math.max(30, span * 0.1);
+    // A short route should still show enough floor context to be readable;
+    // otherwise the fit turns into an extreme close-up with oversized
+    // station dots.
+    const minW = Math.min(m.w, Math.max(300, m.w * 0.45));
+    const minH = Math.min(m.h, Math.max(220, m.h * 0.38));
+    const w = Math.min(m.w, Math.max(minW, x1 - x0 + pad * 2));
+    const h = Math.min(m.h, Math.max(minH, y1 - y0 + pad * 2));
+    const x = Math.max(0, Math.min((x0 + x1) / 2 - w / 2, m.w - w));
+    const y = Math.max(0, Math.min((y0 + y1) / 2 - h / 2, m.h - h));
+    return { x, y, w, h };
+  }
+
+  function clampVB(vb, f) {
+    const m = mapInfo(f);
+    if (!m) return vb;
+    const fit = fitVB(f);
+    const maxW = fit ? fit.w : m.w;
+    vb.w = Math.min(Math.max(vb.w, 40), maxW);
+    vb.h = Math.min(Math.max(vb.h, 40), m.h);
+    if (vb.w >= m.w) vb.x = 0;
+    else vb.x = Math.min(Math.max(vb.x, 0), m.w - vb.w);
+    if (vb.h >= m.h) vb.y = 0;
+    else vb.y = Math.min(Math.max(vb.y, 0), m.h - vb.h);
+    return vb;
+  }
+
   function currentVB(f) {
     const m = mapInfo(f);
-    const w = m ? m.w : 800;
-    const h = m ? m.h : 600;
-    if (!vbMemo[f]) vbMemo[f] = { x: 0, y: 0, w, h };
+    if (!vbMemo[f]) {
+      vbMemo[f] = fitVB(f) ||
+        { x: 0, y: 0, w: m ? m.w : 800, h: m ? m.h : 600 };
+    }
     return vbMemo[f];
   }
 
@@ -387,9 +488,13 @@ const View = (() => {
     const k = kmap(floor);
     const vb = currentVB(floor);
     svg.textContent = "";
-    svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+    setViewBox(svg, vb);
     setStageAspect(vb.w, vb.h);
     svgEl("image", { href: m.href, x: 0, y: 0, width: m.w, height: m.h }, svg);
+    // High-resolution tiles sit directly above the base image. The route
+    // is appended after this group so zoom tiles can never cover it.
+    const tiles = svgEl("g", { id: "tiles" }, svg);
+    void tiles;
     const g = svgEl("g", { id: "route" }, svg);
     const poly = Array.isArray(leg.polyline) ? leg.polyline : [];
     if (poly.length >= 2) {
@@ -416,8 +521,6 @@ const View = (() => {
       stationCircle(g, s.point[0] * k.kx, s.point[1] * k.ky, "#f90",
         s.label || "transit", null);
     });
-    const tiles = svgEl("g", { id: "tiles" }, svg);
-    void tiles;
     renderTabs();
     renderSide();
     maybeTile();
@@ -440,30 +543,41 @@ const View = (() => {
     svg.__bound = true;
     let drag = null;
     svg.addEventListener("pointerdown", (ev) => {
+      if (mode !== "2d" || !route) return;
+      // A marker is an action, not the start of a pan. Capturing the
+      // pointer here retargets pointerup and can suppress the marker click.
+      if (ev.target && ev.target.getAttribute &&
+          ev.target.getAttribute("data-pid")) return;
       drag = { x: ev.clientX, y: ev.clientY, vb: { ...currentVB(floor) } };
       if (svg.setPointerCapture) { try { svg.setPointerCapture(ev.pointerId); } catch { /* noop */ } }
     });
     svg.addEventListener("pointermove", (ev) => {
-      if (!drag) return;
+      if (mode !== "2d" || !route || !drag) return;
       const r = svg.getBoundingClientRect ? svg.getBoundingClientRect() : { width: 800, height: 600 };
       const vb = currentVB(floor);
       vb.x = drag.vb.x - ((ev.clientX - drag.x) / (r.width || 1)) * drag.vb.w;
       vb.y = drag.vb.y - ((ev.clientY - drag.y) / (r.height || 1)) * drag.vb.h;
+      clampVB(vb, floor);
       applyVB();
     });
     const end = () => { if (drag) { drag = null; maybeTile(); } };
     svg.addEventListener("pointerup", end);
     svg.addEventListener("pointercancel", end);
     svg.addEventListener("wheel", (ev) => {
+      if (mode !== "2d" || !route) return;
       if (ev.preventDefault) ev.preventDefault();
       const vb = currentVB(floor);
       const f = ev.deltaY > 0 ? 1.2 : 1 / 1.2;
       const p = svgPoint(svg, ev);
-      const nw = Math.min(Math.max(vb.w * f, 40), (mapInfo(floor) || { w: 800 }).w);
+      const fit = fitVB(floor);
+      const byHeight = fit ? fit.h / (vb.h / vb.w) : Infinity;
+      const maxW = fit ? Math.min(fit.w, byHeight) : (mapInfo(floor) || { w: 800 }).w;
+      const nw = Math.min(Math.max(vb.w * f, 40), maxW);
       const nh = nw * (vb.h / vb.w);
       vb.x = p.x - ((p.x - vb.x) / vb.w) * nw;
       vb.y = p.y - ((p.y - vb.y) / vb.h) * nh;
       vb.w = nw; vb.h = nh;
+      clampVB(vb, floor);
       applyVB();
       maybeTile();
     }, { passive: false });
@@ -473,12 +587,12 @@ const View = (() => {
     const svg = $("map");
     if (!svg) return;
     const vb = currentVB(floor);
-    svg.setAttribute("viewBox", `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
+    setViewBox(svg, vb);
   }
 
   // -- V7: HD tiles --------------------------------------------------------------
-  function tileKey(f, cx, cy) {
-    return `${f}|${Math.round(cx / 50)}|${Math.round(cy / 50)}|${route ? route.planId : ""}`;
+  function tileKey(f, cx, cy, tw, th) {
+    return `${f}|${Math.round(cx / 50)}|${Math.round(cy / 50)}|${tw}x${th}|${route ? route.planId : ""}`;
   }
 
   function maybeTile() {
@@ -499,21 +613,22 @@ const View = (() => {
     // small-px -> full-res using the manifest scale
     const k = kmap(floor);
     const fc = [cx / k.kx, cy / k.ky];
-    const key = tileKey(floor, fc[0], fc[1]);
+    const tw = 1600, th = 1200;
+    const key = tileKey(floor, fc[0], fc[1], tw, th);
     if (tiles.has(key)) { showTile(key); return; }
     try {
       // Spec: the bridge reuses MCP verbs; App->Host tool calls are
       // plain tools/call (there is no ui/call-server-tool).
       const res = await call("tools/call", {
         name: "get_map_view",
-        arguments: { floor, center: fc, width: 1600, height: 1200, plan_id: route ? route.planId : null },
+        arguments: { floor, center: fc, width: tw, height: th, plan_id: route ? route.planId : null },
       }, 15000);
       const img = ((res && res.content) || []).find(
         (b) => b && b.type === "image" && typeof b.data === "string");
       if (!img) return;
       const mime = img.mimeType || "image/webp";
       const uri = `data:${mime};base64,${img.data}`;
-      tiles.set(key, { uri, floor, cx: fc[0], cy: fc[1] });
+      tiles.set(key, { uri, floor, cx: fc[0], cy: fc[1], tw, th });
       while (tiles.size > TILE_LRU_MAX) {
         tiles.delete(tiles.keys().next().value);
       }
@@ -537,10 +652,9 @@ const View = (() => {
     lastTileKey = key;
     const m = mapInfo(t.floor);
     const k = kmap(t.floor);
-    // tile box in full-res px, same 1600x1200 request as fetchTile
-    const ox = cropOrigin(m.fw, t.cx, 1600);
-    const oy = cropOrigin(m.fh, t.cy, 1200);
-    const tw = Math.min(1600, m.fw), th = Math.min(1200, m.fh);
+    const tw = Math.min(t.tw, m.fw), th = Math.min(t.th, m.fh);
+    const ox = cropOrigin(m.fw, t.cx, tw);
+    const oy = cropOrigin(m.fh, t.cy, th);
     g.textContent = "";
     const im = svgEl("image", {
       href: t.uri, x: (ox * k.kx).toFixed(1), y: (oy * k.ky).toFixed(1),
@@ -587,9 +701,10 @@ const View = (() => {
     if (b3) {
       // 3D works for single-floor routes too (a lone floor plate with
       // extruded walls); only the cross-floor connector is missing there.
-      const cross = route.legs.length >= 2;
       b3.disabled = false;
-      b3.textContent = cross && mode === "2d" ? "3D · cross-floor" : "3D";
+      b3.textContent = mode === "3d" ? "2D" : "3D";
+      b3.setAttribute("aria-label",
+        mode === "3d" ? "Switch to flat 2D view" : "Switch to 3D view");
       b3.setAttribute("aria-pressed", mode === "3d" ? "true" : "false");
     }
   }
@@ -597,35 +712,40 @@ const View = (() => {
   function renderSide() {
     const d = $("detail");
     if (!d || !route) return;
-    const o = route.origin, dst = route.destination;
-    let html = "";
-    if (o && dst) {
-      html += `<h4>${esc(o.name)} → ${esc(dst.name)}</h4>`;
+    d.textContent = "";
+    if (!route.warnings.length) {
+      d.hidden = true;
+      return;
     }
-    const leg = legByFloor(floor);
-    if (leg && Array.isArray(leg.steps) && leg.steps.length) {
-      html += "<ol>" + leg.steps.map((s) => `<li>${esc(s.instruction || s.label || "")}</li>`).join("") + "</ol>";
-    }
-    if (route.warnings.length) {
-      html += "<h4>Warnings</h4><ul>" +
-        route.warnings.map((w) => `<li>${esc(w)}</li>`).join("") + "</ul>";
-    }
-    d.innerHTML = html;
+    // The chat answer owns the route narrative; the embedded view only
+    // surfaces data-quality warnings that affect whether the map is safe.
+    const h = document.createElement("h4");
+    h.textContent = "Route data warning";
+    d.appendChild(h);
+    const ul = document.createElement("ul");
+    route.warnings.forEach((w) => {
+      const li = document.createElement("li");
+      li.textContent = w;
+      ul.appendChild(li);
+    });
+    d.appendChild(ul);
+    d.hidden = false;
   }
 
   async function showDetail(placeId) {
     const d = $("detail");
-    setStatus(`loading ${placeId}…`);
     try {
       const res = await call("tools/call", {
-        name: "get_location_detail", arguments: { id: placeId },
+        name: "get_location_detail", arguments: { place_id: placeId },
       });
       const sc = res && res.structuredContent;
       if (res && res.isError) {
         const t = ((res && res.content) || [])
           .filter((b) => b && b.type === "text" && typeof b.text === "string")
           .map((b) => b.text).join("\n");
-        setStatus(`detail failed: ${t || "unknown error"}`);
+        showError("detail", t || "unknown error", [
+          { label: "Reset", fn: () => resetView() },
+        ]);
         return;
       }
       if (d) {
@@ -633,15 +753,24 @@ const View = (() => {
           d.innerHTML = `<h4>${esc(sc.name)}</h4>` +
             `<div>Floor ${esc(sc.floor || "")} · at (${esc((sc.point || []).join(", "))})</div>` +
             (sc.call_number ? `<div>Call number ${esc(sc.call_number)}</div>` : "") +
-            ((sc.other_floors || []).length ? `<div>Also on ${esc(sc.other_floors.join(", "))}</div>` : "");
+            ((sc.other_floors || []).length ? `<div>Also on ${esc(sc.other_floors.join(", "))}</div>` : "") +
+            '<button type="button" id="detail-close">Close</button>';
+          const close = d.querySelector ? d.querySelector("#detail-close") : null;
+          if (close) close.addEventListener("click", () => {
+            d.textContent = "";
+            d.hidden = true;
+          });
+          d.hidden = false;
         } else {
           const t = ((res && res.content) || []).filter((b) => b && b.type === "text").map((b) => b.text).join("\n");
           d.innerHTML = `<h4>${esc(placeId)}</h4><pre>${esc(t)}</pre>`;
+          d.hidden = false;
         }
       }
-      setStatus("detail loaded.");
     } catch (e) {
-      setStatus(`detail failed: ${e && e.message ? e.message : e}`);
+      showError("detail", e && e.message ? e.message : String(e), [
+        { label: "Reset", fn: () => resetView() },
+      ]);
     }
   }
 
@@ -690,11 +819,7 @@ const View = (() => {
     // maps carry a legend / title / compass band below the plan, 55% of
     // 6F, and fitting the full image stretched the slab and pushed the
     // route off-centre).
-    const rectsOf = (floorName) => {
-      const m = mapInfo(floorName);
-      if (!m) return [];
-      return outlineOf(floorName) || [[0, 0, m.fw, m.fh]];
-    };
+    const rectsOf = (floorName) => floorRects(floorName);
     const legs = route.legs || [];
     const floors = [];
     legs.forEach((l) => {
@@ -778,7 +903,8 @@ const View = (() => {
     };
     legs.forEach((l) => {
       const z = l.floor === "6F" ? P.z6 : 0;
-      const rects = outlineOf(l.floor) || [];
+      const rects = floorRects(l.floor);
+      const lift = (P.lift || 0) + (P.wallH || 0) * 1.15;
       rects.forEach((r) => {
         [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]].forEach(([x, y]) => {
           const p = project(x, y, z, P);
@@ -788,9 +914,22 @@ const View = (() => {
           grow(p[0], p[1] + (P.thick || 0));
         });
       });
+      // Route and markers float above the walls; include them explicitly so
+      // an incomplete outline can never produce a viewBox that excludes the
+      // very geometry the user is meant to see.
+      (Array.isArray(l.polyline) ? l.polyline : []).forEach((p) => {
+        if (!Array.isArray(p) || p.length < 2) return;
+        const q = project(p[0], p[1], z + lift, P);
+        grow(q[0], q[1]);
+      });
+      (Array.isArray(l.steps) ? l.steps : []).forEach((s) => {
+        if (!s || !Array.isArray(s.point) || s.point.length < 2) return;
+        const q = project(s.point[0], s.point[1], z + lift, P);
+        grow(q[0], q[1]);
+      });
     });
-    if (!isFinite(minX)) return { x: 0, y: 0, w: 100, h: 100 };
-    const pad = Math.max(12, (maxX - minX) * 0.03);
+    if (!isFinite(minX) || !isFinite(minY)) return null;
+    const pad = Math.max(24, (maxX - minX) * 0.08);
     return {
       x: minX - pad, y: minY - pad,
       w: (maxX - minX) + pad * 2, h: (maxY - minY) + pad * 2,
@@ -827,7 +966,16 @@ const View = (() => {
     return { tops, sides, shadow };
   }
 
-  function render3D() {
+  function schedule3DRefit() {
+    if (refitFrame || typeof requestAnimationFrame === "undefined") return;
+    refitFrame = requestAnimationFrame(() => {
+      refitFrame = null;
+      if (mode !== "3d" || !route || !fullMode()) return;
+      try { render3D(true); } catch { /* keep current frame */ }
+    });
+  }
+
+  function render3D(refitPass) {
     const svg = $("map");
     if (!svg) return;
     const legs = route.legs;
@@ -837,11 +985,23 @@ const View = (() => {
     const zOf = (l) => (l.floor === "6F" ? P.z6 : 0);
 
     // Screen-space viewBox covering union + lift.
-    // Screen-space viewBox covering the projected model plus the lift.
     const vb = projBounds(P, legs);
+    if (!vb) {
+      mode = "2d";
+      showError("draw", "3D geometry unavailable; showing the flat plan", [
+        { label: "Reset", fn: () => resetView() },
+      ]);
+      render2D();
+      return;
+    }
     svg.textContent = "";
-    svg.setAttribute("viewBox", `${vb.x.toFixed(1)} ${vb.y.toFixed(1)} ${vb.w.toFixed(1)} ${vb.h.toFixed(1)}`);
+    setViewBox(svg, vb);
+    const stage = $("stage");
+    const beforeAspect = stage ? stage.style.aspectRatio : "";
     setStageAspect(vb.w, vb.h);
+    if (!refitPass && stage && stage.style.aspectRatio !== beforeAspect) {
+      schedule3DRefit();
+    }
     // v1 polish: slab gradient + soft shadow filter (single defs, rebuilt
     // with every render since the svg is cleared above).
     const defs = svgEl("defs", null, svg);
@@ -859,7 +1019,7 @@ const View = (() => {
       if (!m) return;
       const z = zOf(leg);
       const g = svgEl("g", { opacity: current ? 1 : 0.72 }, svg);
-      const rects = outlineOf(leg.floor) || [[0, 0, m.fw, m.fh]];
+      const rects = floorRects(leg.floor);
       const slab = slabPolys(rects, z, P);
 
       // Contact shadow under the plate.
@@ -932,7 +1092,7 @@ const View = (() => {
       }
       const steps = Array.isArray(leg.steps) ? leg.steps : [];
       const lift2 = lift;
-      const dot = (p, fill, title) => {
+      const dot = (p, fill, title, placeId) => {
         if (!p) return;
         const [sx, sy] = project(p[0], p[1], z + lift2, P);
         const c = svgEl("circle", { cx: sx.toFixed(1), cy: sy.toFixed(1), r: 11, fill, stroke: "white", "stroke-width": 3.5 }, g);
@@ -940,9 +1100,29 @@ const View = (() => {
           const t = svgEl("title", null, c);
           t.textContent = title;
         }
+        if (placeId) {
+          c.setAttribute("data-pid", placeId);
+          c.setAttribute("tabindex", "0");
+          c.setAttribute("role", "button");
+          c.setAttribute("aria-label", title || placeId);
+          c.style.cursor = "pointer";
+          c.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            showDetail(placeId);
+          });
+          c.addEventListener("keydown", (ev) => {
+            if (ev.key === "Enter" || ev.key === " ") {
+              ev.preventDefault();
+              showDetail(placeId);
+            }
+          });
+        }
       };
-      if (poly[0]) dot(poly[0], "#22a355", (steps[0] || {}).label || "start");
-      if (poly[poly.length - 1]) dot(poly[poly.length - 1], "#d33", (steps[steps.length - 1] || {}).label || "end");
+      if (poly[0]) dot(poly[0], "#22a355",
+        (steps[0] || {}).label || "start", (steps[0] || {}).place_id || null);
+      if (poly[poly.length - 1]) dot(poly[poly.length - 1], "#d33",
+        (steps[steps.length - 1] || {}).label || "end",
+        (steps[steps.length - 1] || {}).place_id || null);
       // Floor plate (v1): dark chip with the floor name. The chip sits above
       // the middle of the slab so it never falls outside the view box
       // (the projected corners do, for the far floor).
@@ -1023,6 +1203,34 @@ const View = (() => {
     reportSize();
   }
 
+  function resetView() {
+    hideError();
+    clearTiles();
+    vbMemo = {};
+    lastTileKey = null;
+    tiltSQ = 0.62;
+    if (refitFrame && typeof cancelAnimationFrame !== "undefined") {
+      cancelAnimationFrame(refitFrame);
+      refitFrame = null;
+    }
+    const d = $("detail");
+    if (d) {
+      d.textContent = "";
+      d.hidden = true;
+    }
+    if (route) {
+      floor = route.legs[0].floor;
+      mode = requestedMode || "3d";
+      if (fullMode()) {
+        try { renderRoute(); } catch (e) {
+          showError("draw", e && e.message ? e.message : String(e));
+        }
+      }
+    }
+    renderContract();
+    reportSize();
+  }
+
   function setMode(next) {
     mode = next;
     hideTiles();
@@ -1037,14 +1245,13 @@ const View = (() => {
 
   // -- L3 degraded view ------------------------------------------------------------
   async function attemptDegraded(reason) {
-    // Image + steps without the SVG pipeline. Works even when render2D/3D
-    // throws: plain <img> plus the human steps.
+    // Image without the SVG pipeline. The chat owns the step narrative; the
+    // fallback only preserves a usable map and an actionable error.
     const stage = $("stage");
     try {
-      let leg = route && route.legs[0];
+      const leg = route && route.legs[0];
       const f = (leg && leg.floor) || "5F";
       const poly = (leg && leg.polyline) || null;
-      const steps = (leg && leg.steps) || [];
       let uri = null;
       try {
         const res = await call("tools/call", {
@@ -1071,9 +1278,14 @@ const View = (() => {
         }
         const d = $("detail");
         if (d) {
-          d.innerHTML = `<h4>Steps (degraded view: ${esc(reason)})</h4><ol>` +
-            steps.map((s) => `<li>${esc(s.instruction || s.label || "")}</li>`).join("") +
-            "</ol>";
+          d.textContent = "";
+          const h = document.createElement("h4");
+          h.textContent = "Map preview unavailable";
+          const p = document.createElement("div");
+          p.textContent = "Use the directions in the chat answer, or try the full view again.";
+          d.appendChild(h);
+          d.appendChild(p);
+          d.hidden = false;
         }
         reportSize();
       }
@@ -1123,12 +1335,21 @@ const View = (() => {
         protocolVersion: "2026-01-26",
         appCapabilities: { tools: {}, availableDisplayModes: ["inline"] },
       });
-      hostContext = (res && res.hostContext) || {};
+      // A host-context-changed notification may have arrived before the
+      // initialize response; keep that newer patch instead of discarding it.
+      hostContext = { ...((res && res.hostContext) || {}), ...hostContext };
     } catch (e) {
-      hostContext = {};
-      showError("handshake", `Could not reach the host; please ask again (${e && e.message ? e.message : e})`, [
-        { label: "Retry", fn: () => boot() },
+      // Keep any context already pushed by the host; an empty object here
+      // would force the view back to its fallback theme. Do not announce
+      // "initialized" after a failed initialize: the host may then push a
+      // tool result and hide the actionable Reconnect error.
+      showError("handshake", `Could not reach the host; please reconnect (${e && e.message ? e.message : e})`, [
+        { label: "Reconnect", fn: () => boot() },
       ]);
+      applyTheme();
+      applyHeight();
+      renderContract();
+      return;
     }
     applyTheme();
     applyHeight();
@@ -1168,7 +1389,7 @@ const View = (() => {
   }
 
   return {
-    boot, ping, onMessage,
+    boot, ping, onMessage, reset: resetView,
     // Test hooks (no production use).
     _t: {
       get: () => ({ route, floor, mode, vbMemo, tiles: [...tiles.keys()] }),
@@ -1196,7 +1417,7 @@ document.addEventListener("DOMContentLoaded", () => View.boot());
 document.addEventListener("click", (ev) => {
   if (!ev.target) return;
   if (ev.target.id === "ping") View.ping();
-  if (ev.target.id === "retry") View.boot();
+  if (ev.target.id === "reset" || ev.target.id === "retry") View.reset();
   if (ev.target.id === "mode3d") View._t.setMode(mode3dNext());
   function mode3dNext() {
     const b = document.getElementById("mode3d");

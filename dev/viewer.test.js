@@ -30,14 +30,20 @@ let throwOnceOnSetAttr = false;
 function mkEl(tag) {
   return {
     tag, attrs: {}, children: [], _text: "", style: { removeProperty() {} },
-    disabled: false,
+    disabled: false, listeners: {},
     setAttribute(k, v) {
       if (throwOnceOnSetAttr) { throwOnceOnSetAttr = false; throw new Error("boom"); }
       this.attrs[k] = String(v);
     },
     getAttribute(k) { return this.attrs[k]; },
     appendChild(c) { this.children.push(c); return c; },
-    addEventListener() {}, removeEventListener() {},
+    addEventListener(t, fn) { (this.listeners[t] || (this.listeners[t] = [])).push(fn); },
+    removeEventListener(t, fn) {
+      this.listeners[t] = (this.listeners[t] || []).filter((f) => f !== fn);
+    },
+    dispatch(t, ev) {
+      (this.listeners[t] || []).forEach((fn) => fn(ev));
+    },
     querySelector(sel) {
       if (sel[0] === "#") return find(this, (n) => n.attrs && n.attrs.id === sel.slice(1));
       return find(this, (n) => n.tag === sel);
@@ -136,13 +142,17 @@ const driver = `
     && String(n.attrs["clip-path"] || "").indexOf("#clip-") >= 0);
   assert(clipped.length >= 1, "texture clipped to the plan outline");
 
-  // The flat view is still reachable and unchanged.
+  // The flat view fits the current route, not the full base image: both
+  // floors carry a legend/title band that must not dominate the first frame.
   View._t.setMode("2d");
   await sleep(20);
-  assert(svg.attrs.viewBox === "0 0 1515 1051", "viewBox 5F");
-  // Aspect funnel: dropping to 2D must rewrite the stage's box ratio from
-  // the wider projected 3D ratio to this floor map's own ratio.
-  assert(el("stage").style.aspectRatio === "1515 / 1051",
+  const vb5 = svg.attrs.viewBox.split(" ").map(Number);
+  assert(vb5.every(Number.isFinite) && vb5[2] > 0 && vb5[3] > 0,
+    "finite 5F viewBox: " + svg.attrs.viewBox);
+  assert(vb5[2] < 1515 || vb5[3] < 1051,
+    "5F viewBox must crop the legend, got " + svg.attrs.viewBox);
+  assert(el("stage").style.aspectRatio ===
+    Math.round(vb5[2] * 100) / 100 + " / " + Math.round(vb5[3] * 100) / 100,
     "2D stage aspect: " + el("stage").style.aspectRatio);
   const paths = findAll(svg, (n) => n.tag === "path");
   assert(paths.length >= 2, "casing+core");
@@ -154,10 +164,15 @@ const driver = `
     "station marks: " + fills);
   const tabs = (el("floors").children || []).map((b) => b.textContent);
   assert(tabs.join(",") === "5F,6F", "tabs: " + tabs);
+  const childIds = svg.children.map((c) => c.attrs && c.attrs.id);
+  assert(childIds.indexOf("tiles") < childIds.indexOf("route"),
+    "tiles must render below the route: " + childIds.join(","));
 
   View._t.switchFloor("6F");
   await sleep(20);
-  assert(svg.attrs.viewBox === "0 0 1883 1011", "viewBox 6F");
+  const vb6 = svg.attrs.viewBox.split(" ").map(Number);
+  assert(vb6.every(Number.isFinite) && vb6[3] < 1011 * 0.55,
+    "6F viewBox must exclude the legend band: " + svg.attrs.viewBox);
 
   const p = View._t.project(10, 20, 0, { S: 2, SQ: 1, SH: 0 });
   assert(p[0] === 20 && p[1] === 40, "projection degenerate: " + p);
@@ -169,10 +184,24 @@ const driver = `
   assert(findAll(svg, (n) => n.tag === "polygon").length >= 4, "slab sides");
   assert(findAll(svg, (n) => n.tag === "text")
     .some((t) => t.textContent.includes("Up to 6F")), "connector label");
+  const vb3d = svg.attrs.viewBox;
+  let prevented = false;
+  svg.dispatch("wheel", { deltaY: -100, clientX: 120, clientY: 80,
+    preventDefault() { prevented = true; } });
+  svg.dispatch("pointerdown", { clientX: 120, clientY: 80, pointerId: 1 });
+  svg.dispatch("pointermove", { clientX: 80, clientY: 40 });
+  assert(svg.attrs.viewBox === vb3d, "3D wheel/drag must not touch viewBox");
+  assert(!prevented, "3D wheel must leave chat scrolling alone");
   View._t.setTilt(1.0);
   View._t.setTilt(0.45);
   View._t.setMode("2d");
   assert(View._t.get().mode === "2d", "mode 2d");
+  View._t.switchFloor("6F");
+  View.reset();
+  await sleep(20);
+  assert(View._t.get().mode === "3d", "reset restores requested 3D mode");
+  assert(View._t.get().floor === "5F", "reset restores first floor");
+  assert(svg.attrs.viewBox === vb3d, "reset restores the initial 3D frame");
 
   // down-route (6F->5F): connector must span the two transit steps,
   // not the destination/origin endpoints (regression: old code used
@@ -247,7 +276,7 @@ const driver = `
   onMsg({ data: { jsonrpc: "2.0", method: "ui/notifications/tool-cancelled",
     params: { reason: "user stopped" } } });
   await sleep(20);
-  assert(el("status").textContent.includes("cancelled"), "cancel status");
+  assert(el("errorbar").style.display === "block", "cancel must error-bar");
   onMsg({ data: { jsonrpc: "2.0", method: "ui/notifications/tool-result",
     params: { content: [] } } });
   await sleep(20);

@@ -29,6 +29,7 @@ jobs:
           PYTHONPATH=src python src/test.py
           PYTHONPATH=src python src/test_fallbacks.py
           PYTHONPATH=src python src/test_route_schema.py
+          PYTHONPATH=src python src/test_api_contract.py
 
       - name: Route quality (walkable / reachable / efficient / points)
         # Second opinion on the same routes, computed from the free space
@@ -51,3 +52,36 @@ jobs:
 
       - name: Docker build (startup self-check + static pregen)
         run: docker build .
+
+  view-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Pre-generate view assets
+        run: |
+          python scripts/build_static.py
+          python scripts/build_preview.py
+
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Browser view tests (402px and responsive matrix)
+        run: PYTHONPATH=src python dev/browser_test.py
+
+      - name: Upload browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-view-artifacts
+          path: review_out/browser
+          if-no-files-found: ignore
+          retention-days: 7

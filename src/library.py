@@ -828,6 +828,7 @@ def build_route(destination, start=None, accessible_only=False):
     only the elevator is used for floor changes. Returns route_data::
 
         {'src': src_row, 'dest': dest_row,
+         'src_id': unique_start_id, 'dest_id': unique_destination_id,
          'kind': 'already_there' | 'same_floor' | 'cross_floor',
          'legs': [{'floor', 'map_file', 'points',
                    'start_color', 'end_color'}, ...],
@@ -838,6 +839,9 @@ def build_route(destination, start=None, accessible_only=False):
     Raises ValueError if either endpoint cannot be resolved.
     """
     _maybe_reload_corridors()
+
+    all_rows = _load_rows()
+    idmap = _id_by_row(all_rows)
 
     if start:
         src = find_location(start)
@@ -855,13 +859,18 @@ def build_route(destination, start=None, accessible_only=False):
     if not dest:
         raise ValueError(f"Destination not found for '{destination}'.")
 
+    src_id = _place_id_for(src, idmap)
+    dest_id = _place_id_for(dest, idmap)
     d_floor = dest['floor']
     d_xy = (int(dest['x']), int(dest['y']))
 
-    # Already there.
-    if src['name'] == dest['name']:
+    # Already there means the same row, not merely the same display name:
+    # upstream data contains multiple distinct rooms/facilities with
+    # identical names on the same floor.
+    if src_id == dest_id:
         msg = f"You're already at '{dest['name']}' on the {d_floor} floor."
-        return {'src': src, 'dest': dest, 'kind': 'already_there',
+        return {'src': src, 'dest': dest, 'src_id': src_id, 'dest_id': dest_id,
+                'kind': 'already_there',
                 'legs': [{'floor': d_floor,
                           'map_file': CORRIDORS[d_floor]["map_file"],
                           'points': [d_xy, d_xy],
@@ -880,7 +889,8 @@ def build_route(destination, start=None, accessible_only=False):
                f"floor, so this is a single-floor walk -- no stairs or elevator "
                f"and no floor change are needed. Follow the route on the {s_floor} "
                f"map: green marker = start, red marker = destination.")
-        return {'src': src, 'dest': dest, 'kind': 'same_floor',
+        return {'src': src, 'dest': dest, 'src_id': src_id, 'dest_id': dest_id,
+                'kind': 'same_floor',
                 'legs': [{'floor': s_floor,
                           'map_file': CORRIDORS[s_floor]["map_file"],
                           'points': pts,
@@ -916,7 +926,8 @@ def build_route(destination, start=None, accessible_only=False):
            f"Step 3 ({d_floor} map): from the {transit_name} (green marker), follow "
            f"the route to '{dest['name']}' (red marker). "
            f"Do not mention any other stairs or elevator -- use only the {transit_name}.")
-    return {'src': src, 'dest': dest, 'kind': 'cross_floor',
+    return {'src': src, 'dest': dest, 'src_id': src_id, 'dest_id': dest_id,
+            'kind': 'cross_floor',
             'legs': [{'floor': s_floor,
                       'map_file': CORRIDORS[s_floor]["map_file"],
                       'points': pts1,
@@ -986,6 +997,35 @@ def _assign_place_ids(rows):
         counts[base] = n
         ids.append(base if n == 1 else f"{base}-{n}")
     return ids
+
+
+def _row_key(row):
+    """Content identity for a row returned by find_location().
+
+    _load_rows() returns fresh dict copies on every call, so object identity
+    cannot join a resolved row back to _assign_place_ids(). The upstream data
+    has no fully duplicated rows; these fields are the same ones used to
+    locate a place and remain stable after route_overrides are applied.
+    """
+    return tuple(str(row.get(k, '') or '') for k in (
+        'name', 'type', 'floor', 'x', 'y', 'call_start', 'call_end'))
+
+
+def _id_by_row(rows):
+    """Map content identity to the authoritative unique place id."""
+    return {_row_key(r): pid for r, pid in zip(rows, _assign_place_ids(rows))}
+
+
+def _place_id_for(row, idmap):
+    """Authoritative id for a resolved row.
+
+    A miss means the file changed between resolution and this lookup; fail
+    loudly instead of falling back to a colliding base id.
+    """
+    key = _row_key(row)
+    if key not in idmap:
+        raise ValueError("Location data changed while building the route; retry.")
+    return idmap[key]
 
 
 def _row_to_place(row, place_id=None):
@@ -1122,26 +1162,31 @@ def _map_size(floor):
     return _MAP_SIZES[floor]
 
 
-def _leg_steps(kind, leg, origin, dest, transit):
+def _leg_steps(kind, leg, origin, dest, transit, origin_id, dest_id):
     """Per-leg human steps. Only start/transit/end kinds are emitted in
     Step 3 (no door/corridor segmentation data exists yet); the schema
-    already accepts the finer kinds for Step 5."""
+    already accepts the finer kinds for Step 5.
+
+    `origin_id`/`dest_id` are the authoritative unique ids from
+    _assign_place_ids; rebuilding them with _place_id() loses -2/-3
+    suffixes and can point at a different same-named place.
+    """
     pts = leg['points']
     if kind == 'already_there':
         return [models.RouteStep(
             kind='end', point=[float(dest['x']), float(dest['y'])],
-            place_id=_place_id(dest), label=dest['name'],
+            place_id=dest_id, label=dest['name'],
             instruction=f"You're already at '{dest['name']}' "
                         f"on the {dest['floor']} floor.")]
     if kind == 'same_floor':
         return [
             models.RouteStep(
                 kind='start', point=[float(p) for p in pts[0]],
-                place_id=_place_id(origin), label=origin['name'],
+                place_id=origin_id, label=origin['name'],
                 instruction=f"Start at {origin['name']}."),
             models.RouteStep(
                 kind='end', point=[float(p) for p in pts[-1]],
-                place_id=_place_id(dest), label=dest['name'],
+                place_id=dest_id, label=dest['name'],
                 instruction=f"Arrive at {dest['name']}."),
         ]
     # Cross floor: leg 0 ends at the transit, leg 1 starts from it.
@@ -1151,7 +1196,7 @@ def _leg_steps(kind, leg, origin, dest, transit):
         return [
             models.RouteStep(
                 kind='start', point=[float(p) for p in pts[0]],
-                place_id=_place_id(origin), label=origin['name'],
+                place_id=origin_id, label=origin['name'],
                 instruction=f"Start at {origin['name']}."),
             models.RouteStep(
                 kind='transit', point=[float(p) for p in pts[-1]],
@@ -1167,7 +1212,7 @@ def _leg_steps(kind, leg, origin, dest, transit):
                         f"at the {transit['name']}."),
         models.RouteStep(
             kind='end', point=[float(p) for p in pts[-1]],
-            place_id=_place_id(dest), label=dest['name'],
+            place_id=dest_id, label=dest['name'],
             instruction="You have arrived."),
     ]
 
@@ -1175,6 +1220,38 @@ def _leg_steps(kind, leg, origin, dest, transit):
 def _polyline_length(pts):
     return sum(((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2) ** 0.5
                for a, b in zip(pts, pts[1:]))
+
+
+def _leg_warnings(raw_legs):
+    """Surface router fallbacks in the public RoutePlan warnings.
+
+    The diagnostics are intentionally internal at the leg level (they are
+    not part of the schema), but silently discarding them lets a wall-
+    crossing or disconnected fallback look like a fully valid route. Each
+    flag gets one stable, human-readable warning.
+    """
+    out = []
+    for leg in raw_legs:
+        floor = leg.get('floor', 'unknown floor')
+        diag = leg.get('diag') or {}
+        penalised = int(diag.get('penalty_edges') or 0)
+        if penalised > 0:
+            out.append(
+                f"{floor}: route crosses a wall ({penalised} penalised "
+                "segment(s)); corridor walls may be incomplete")
+        if diag.get('end_fallback'):
+            out.append(
+                f"{floor}: no visible corridor point near a route endpoint; "
+                "used the nearest spine point")
+        if diag.get('graph_fallback'):
+            out.append(
+                f"{floor}: corridor graph is disconnected; drew a straight "
+                "line between the endpoints")
+        if diag.get('epsilon_used'):
+            out.append(
+                f"{floor}: route grazes a wall within the doorway epsilon "
+                f"({ENDPOINT_EPS}px) at a route endpoint")
+    return out
 
 
 def get_route(destination, start=None, accessible_only=False,
@@ -1187,8 +1264,8 @@ def get_route(destination, start=None, accessible_only=False,
     """
     route = build_route(destination, start,
                         accessible_only=accessible_only)
-    origin = _row_to_place(route['src'])
-    dest = _row_to_place(route['dest'])
+    origin = _row_to_place(route['src'], route['src_id'])
+    dest = _row_to_place(route['dest'], route['dest_id'])
     legs = []
     for leg in route['legs']:
         poly = [[float(x), float(y)] for x, y in leg['points']]
@@ -1204,7 +1281,8 @@ def get_route(destination, start=None, accessible_only=False,
             floor=leg['floor'], map_file=leg['map_file'],
             map_size=_map_size(leg['floor']), polyline=poly,
             steps=_leg_steps(route['kind'], leg, route['src'], route['dest'],
-                             route['transit']),
+                             route['transit'], route['src_id'],
+                             route['dest_id']),
             transit=(transit if leg == route['legs'][0]
                      and route['kind'] == 'cross_floor' else None)))
     names = [route['transit']['name']] if route['transit'] else []
@@ -1220,8 +1298,10 @@ def get_route(destination, start=None, accessible_only=False,
             warnings.append(
                 f"{leg.floor} has no wall segments marked; "
                 "the route may pass through walls")
+    warnings.extend(_leg_warnings(route['legs']))
     plan_id = hashlib.sha1(
-        f"{origin.id}:{dest.id}:{accessible_only}".encode()).hexdigest()[:12]
+        f"{route['src_id']}:{route['dest_id']}:{accessible_only}".encode()
+    ).hexdigest()[:12]
     return models.RoutePlan(
         plan_id=plan_id,
         generated_at=datetime.now(timezone.utc).isoformat(),

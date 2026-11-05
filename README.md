@@ -54,11 +54,18 @@ python scripts/build_static.py              # once: the view and schema tests ne
 PYTHONPATH=src python src/test.py           # 220 routes: no crossing, no <6px clearance, no paid penalty
 PYTHONPATH=src python src/test_fallbacks.py # kill-switch invariants + frozen legacy image bytes
 PYTHONPATH=src python src/test_route_schema.py  # models vs schemas/*.json snapshots + live protocol
+PYTHONPATH=src python src/test_api_contract.py  # unique ids, MIME, tool schemas, fallback warnings
 PYTHONPATH=src python dev/route_quality.py  # L1 reachable / L2 walkable / L3 efficient / L4 markers
 PYTHONPATH=src python dev/xcheck_raster.py  # independent raster check; any disagreement fails
 node dev/viewer.test.js                     # view logic on a fake DOM (CI uses Node 20)
+python scripts/build_preview.py             # regenerate dev/preview.html (gitignored)
+PYTHONPATH=src python dev/browser_test.py   # real Chromium: visible 3D/2D, 402px layout, theme, Reset
 docker build .                              # startup self-check + static pregen
 ```
+
+The browser suite is dev-only. One-time setup: `pip install -r
+requirements-dev.txt && python -m playwright install chromium`. It does not
+enter the runtime image.
 
 `test.py` and `xcheck_raster.py` are deliberately separate implementations: a
 test that shares its geometry with the code under test cannot catch a shared

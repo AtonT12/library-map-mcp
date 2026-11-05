@@ -6,5 +6,6 @@ __pycache__/
 *.pdf
 *.ai
 dev/preview.html
+review_out/
 .vscode/
 .github/
