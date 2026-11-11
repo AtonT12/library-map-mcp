@@ -21,7 +21,7 @@ them; unknown fields inside known messages are ignored (optional-read).
 
 | Dir | Kind | Method | Params |
 |---|---|---|---|
-| V→H | request | `ui/initialize` | `{protocolVersion, appCapabilities:{tools, availableDisplayModes}}` |
+| V→H | request | `ui/initialize` | `{protocolVersion, appInfo:{name,version}, appCapabilities:{tools, availableDisplayModes}}` — **all three required**; the host validates the params object and rejects a missing `appInfo` with `-32602 invalid_type` |
 | H→V | response | — | `{protocolVersion, hostCapabilities, hostInfo?, hostContext}` (or `{code,message}` error) |
 | V→H | notification | `ui/notifications/initialized` | `{}` |
 | H→V | notification | `ui/notifications/tool-input` | `{arguments}` (required before tool-result) |
@@ -55,6 +55,13 @@ the view must not independently follow `prefers-color-scheme`. A theme
 already pushed before the initialize response wins over the (older)
 initialize context.
 
+`theme` describes **this page**, so a host must not derive it from the OS.
+Ask violated that until 2026-11-11 (`resolveHostTheme` fell back to
+`prefers-color-scheme` when the page had no `dark` class), which made every
+app render dark inside a light chat for OS-dark visitors. Fixed in
+`Ask-Roary-UI`; verified with `dev/ask_probe.py`, which forces the browser to
+OS-dark and asserts the view stays light.
+
 ## Production UI surface
 
 The shipped `ui://` view contains only the map, floor tabs, the 2D/3D
@@ -82,6 +89,13 @@ takes exactly `{place_id: string}`.
 - `protocolVersion: "2026-01-26"` in `ui/initialize` — cites the spec's own
   `McpUiInitializeResult` example + extension Stable date (NOT the base MCP
   protocol version); the request side is unspecified, kept as best guess.
+  **Verified 2026-11-11**: the host accepts this value, but it validates the
+  *whole* params object — a missing `appInfo` fails with
+  `invalid_type path ["params","appInfo"]`. The host's rule comes from the
+  `@modelcontextprotocol/ext-apps` bridge schema:
+  `{appInfo: Implementation(name,version), appCapabilities: object, protocolVersion: string}`,
+  all required. `dev/browser_test.py` and `dev/host.html` now enforce the same
+  rule so a missing field fails locally instead of in the real host.
 - `APP_MIME_TYPE = text/html;profile=mcp-app`, `EXTENSION_ID =
   io.modelcontextprotocol/ui` (spec-verified).
 - `ui://` resource digest caching (~10 min, unverified Ask behavior).

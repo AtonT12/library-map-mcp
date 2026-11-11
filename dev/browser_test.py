@@ -60,6 +60,7 @@ const ROUTE = __ROUTE__;
 const TINY_WEBP = "__TINY_WEBP__";
 const frame = document.getElementById("view");
 window.__inits = 0;
+window.__initErrors = [];
 window.__calls = [];
 window.__ready = false;
 window.__dropInit = false;
@@ -87,6 +88,27 @@ window.addEventListener("message", (ev) => {
   if (m.method === "ui/initialize") {
     window.__inits += 1;
     if (window.__dropInit) return;
+    // Mirror the REAL host's MCP Apps schema for ui/initialize params
+    // (ext-apps app-bridge): appInfo {name,version} and appCapabilities are
+    // required objects. The harness used to accept anything, which is exactly
+    // how the missing-appInfo defect reached the real Ask host and failed
+    // there; now it fails here first.
+    const p = m.params || {};
+    const ai = p.appInfo;
+    const bad = [];
+    if (!ai || typeof ai !== "object") bad.push("appInfo");
+    else {
+      if (typeof ai.name !== "string" || !ai.name) bad.push("appInfo.name");
+      if (typeof ai.version !== "string" || !ai.version) bad.push("appInfo.version");
+    }
+    if (!p.appCapabilities || typeof p.appCapabilities !== "object") bad.push("appCapabilities");
+    if (typeof p.protocolVersion !== "string") bad.push("protocolVersion");
+    if (bad.length) {
+      window.__initErrors.push("invalid ui/initialize params: " + bad.join(", "));
+      ev.source.postMessage({jsonrpc:"2.0", id:m.id,
+        error:{code:-32602, message:"Invalid params: " + bad.join(", ")}}, "*");
+      return;
+    }
     ev.source.postMessage({jsonrpc:"2.0", id:m.id,
       result:{protocolVersion:"2026-01-26",
         hostContext:{theme:window.__hostTheme,
@@ -127,6 +149,10 @@ window.addEventListener("message", (ev) => {
 
 def _wait_frame(page, preview_url):
     page.wait_for_function("window.__ready === true", timeout=8000)
+    bad = page.evaluate("window.__initErrors || []")
+    if bad:
+        raise AssertionError("ui/initialize failed host-schema validation: "
+                             + "; ".join(bad))
     for frame in page.frames:
         if frame.url.startswith(preview_url):
             frame.wait_for_selector("#map")
@@ -303,7 +329,7 @@ def main():
             # 3. Flat 5F frame is route-focused, not the legend band.
             frame.locator("#mode3d").click()
             frame.wait_for_function(
-                "document.querySelector('#mode3d').textContent.trim() === '3D'")
+                "document.querySelector('#mode3d').textContent.trim() === '2D'")
             _settle(frame)
             vb5 = _viewbox(frame)
             route5 = _bbox(frame)
@@ -333,7 +359,7 @@ def main():
             frame.locator("#reset").click()
             _settle(frame)
             assert frame.evaluate(
-                "document.querySelector('#mode3d').textContent.trim() === '2D'")
+                "document.querySelector('#mode3d').textContent.trim() === '3D'")
             assert frame.evaluate(
                 "document.querySelector('#floors button[aria-pressed=\"true\"]').textContent === '5F'")
             assert _viewbox(frame)["raw"] == vb3d["raw"], (

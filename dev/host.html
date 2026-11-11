@@ -91,6 +91,9 @@ function reply(id, result) {
 function fail(id, message) {
   frame().postMessage({ jsonrpc: "2.0", id, error: { code: -32000, message } }, "*");
 }
+function errReply(id, code, message) {
+  frame().postMessage({ jsonrpc: "2.0", id, error: { code, message } }, "*");
+}
 let booted = false;
 function notify(method, params) {
   const msg = { jsonrpc: "2.0", method, params };
@@ -106,6 +109,23 @@ window.addEventListener("message", (ev) => {
   if (!m || m.jsonrpc !== "2.0") return;
   log("V=>H", m);
   if (m.method === "ui/initialize" && m.id !== undefined) {
+    // Same required-params rule the real host enforces (ext-apps schema):
+    // appInfo {name,version} + appCapabilities + protocolVersion.
+    const q = m.params || {};
+    const ai = q.appInfo;
+    const bad = [];
+    if (!ai || typeof ai !== "object") bad.push("appInfo");
+    else {
+      if (typeof ai.name !== "string" || !ai.name) bad.push("appInfo.name");
+      if (typeof ai.version !== "string" || !ai.version) bad.push("appInfo.version");
+    }
+    if (!q.appCapabilities || typeof q.appCapabilities !== "object") bad.push("appCapabilities");
+    if (typeof q.protocolVersion !== "string") bad.push("protocolVersion");
+    if (bad.length) {
+      log("REJECT ui/initialize: invalid params -> " + bad.join(", "));
+      errReply(m.id, -32602, "Invalid params: " + bad.join(", "));
+      return;
+    }
     reply(m.id, {
       protocolVersion: "2026-01-26",
       hostCapabilities: { serverTools: {}, serverResources: {}, logging: {} },

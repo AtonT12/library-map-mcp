@@ -115,6 +115,12 @@ const driver = `
   const init = sent.find((m) => m.method === "ui/initialize");
   assert(init, "no initialize");
   assert(init.params.appCapabilities.tools !== undefined, "spec appCapabilities");
+  // The host schema makes appInfo mandatory; omitting it is rejected outright
+  // by the real Ask host (observed 2026-11-11).
+  assert(init.params.appInfo && typeof init.params.appInfo.name === "string"
+    && init.params.appInfo.name, "appInfo.name");
+  assert(typeof init.params.appInfo.version === "string" && init.params.appInfo.version,
+    "appInfo.version");
   assert((init.params.appCapabilities.availableDisplayModes || []).includes("inline"),
     "display modes");
   onMsg({ data: { jsonrpc: "2.0", id: init.id,

@@ -17,6 +17,13 @@ const View = (() => {
   const TILE_ZOOM_FRACTION = 0.35; // viewBox narrower than this -> fetch tile
   const SVG_NS = "http://www.w3.org/2000/svg";
 
+  // The host validates ui/initialize params against the MCP Apps schema, where
+  // appInfo (name + version) is REQUIRED -- omitting it is rejected before the
+  // view ever renders (seen in the real Ask host, 2026-11-11). The dev harness
+  // did not validate, so this stayed invisible locally; browser_test.py now
+  // enforces the same shape.
+  const APP_INFO = { name: "nyush-library-view", version: "1.0.0" };
+
   let reqId = 0;
   const pending = new Map();
   let hostContext = {};
@@ -702,7 +709,10 @@ const View = (() => {
       // 3D works for single-floor routes too (a lone floor plate with
       // extruded walls); only the cross-floor connector is missing there.
       b3.disabled = false;
-      b3.textContent = mode === "3d" ? "2D" : "3D";
+      // The label states the mode that is ON, matching aria-pressed. Showing
+      // the *target* mode instead put a highlighted "2D" pill on screen while
+      // the map was clearly 3D.
+      b3.textContent = mode === "3d" ? "3D" : "2D";
       b3.setAttribute("aria-label",
         mode === "3d" ? "Switch to flat 2D view" : "Switch to 3D view");
       b3.setAttribute("aria-pressed", mode === "3d" ? "true" : "false");
@@ -1333,6 +1343,7 @@ const View = (() => {
       // spec-literal (experimental / tools / availableDisplayModes).
       const res = await call("ui/initialize", {
         protocolVersion: "2026-01-26",
+        appInfo: APP_INFO,
         appCapabilities: { tools: {}, availableDisplayModes: ["inline"] },
       });
       // A host-context-changed notification may have arrived before the
@@ -1343,7 +1354,7 @@ const View = (() => {
       // would force the view back to its fallback theme. Do not announce
       // "initialized" after a failed initialize: the host may then push a
       // tool result and hide the actionable Reconnect error.
-      showError("handshake", `Could not reach the host; please reconnect (${e && e.message ? e.message : e})`, [
+      showError("handshake", `Host handshake failed (${e && e.message ? e.message : e})`, [
         { label: "Reconnect", fn: () => boot() },
       ]);
       applyTheme();

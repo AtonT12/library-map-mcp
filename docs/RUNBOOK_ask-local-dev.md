@@ -97,7 +97,9 @@ Verified outcome: negotiates `2025-06-18`; `resources/list` contains `ui://nav/l
 
    In-session extras: `tool-input` sends arguments first; `tool-result (structured)/(text-only)/(empty)` exercise the failure-ish shapes; `push host-context-changed` re-applies theme/`maxHeight`; `reload view` reboots the iframe.
 
-Deterministic browser layer: `dev/browser_test.py` drives the generated view in real Chromium at 360/402/760/1100 CSS px, including visible 3D/2D pixels, floor switching, pan/zoom/Reset, theme, marker details, layout overflow, tile ordering, and the handshake error state. The manual checklist below is the **real Ask host** layer, run after the browser suite:
+Deterministic browser layer: `dev/browser_test.py` drives the generated view in real Chromium at 360/402/760/1100 CSS px, including visible 3D/2D pixels, floor switching, pan/zoom/Reset, theme, marker details, layout overflow, tile ordering, and the handshake error state.
+
+Real-host probe: `dev/ask_probe.py` (manual, needs Track B up) drives the **actual** Ask chat at 1100–1440 viewport widths with the browser forced to OS-dark, and asserts the app follows the host theme, stays on one control row, has no horizontal overflow, keeps a usable stage, and shows no error bar. It prints JSON and exits non-zero on failure; screenshot lands in `review_out/ask-probe.png`. The manual checklist below is the **real Ask host** layer, run after the browser suite:
 
 | # | Area | What to check |
 |---|---|---|
@@ -295,10 +297,27 @@ This sequence is the repeatable P1 evidence: Ask created the instance, proxied t
 - ✅ app instance creation + `appWidget` SSE event in the real chat stream
 - ✅ instance HTML proxied byte-for-byte from the locally built image (pull-fallback path works)
 - ✅ no-restart A/B via `appsEnabled`
-- ⬜ Ask's actual `theme` / `containerDimensions.maxHeight` values and whether it ever sends `host-context-changed`
+- ✅ Ask's `hostContext.theme` and `containerDimensions.maxHeight`, and whether
+  it sends `host-context-changed`. **Verified 2026-11-11** via `dev/ask_probe.py`:
+  - Ask historically derived `theme` as
+    `documentElement.classList.contains("dark") ? "dark" : prefers-color-scheme`.
+    Nothing in that UI ever adds `dark`, so a visitor whose **OS** was dark got
+    `theme: "dark"` injected into every app while the chat stayed light — the
+    exact "app is dark inside Ask's light UI" defect. Fixed host-side in
+    `Ask-Roary-UI/src/components/McpApp/McpAppHostContext.tsx`
+    (`resolveHostTheme` no longer consults the OS). Our view needs no change:
+    it follows the declared theme and defaults to light when absent.
+  - `maxHeight` is clamped to `min(760, max(360, 72% of viewport))`; observed
+    iframe heights 281–390 CSS px at 1100–1440 viewport widths.
+  - `host-context-changed` re-pushes `{theme, locale, maxHeight}` on resize or
+    theme change (`McpAppFrame` effect), merged by the view.
 - ⬜ CSP enforcement and the `ui://` digest cache (~10 min, keyed by image digest; a locally built image has no `RepoDigests`, so invalidation on rebuild is unproven)
 - ⬜ `ui/message` consent behaviour, `tool-cancelled`, `tool-input-partial` streaming, the `sandbox-proxy-ready` dance
-- ⬜ the pinned `protocolVersion: "2026-01-26"` in `ui/initialize` (cites the spec's own example; the request side is unspecified)
+- ✅ the `ui/initialize` **request** shape: Ask validates the params object and
+  requires `appInfo {name, version}` (plus `appCapabilities` and
+  `protocolVersion`). Pinned `"2026-01-26"` is accepted. Omitting `appInfo`
+  produced `View error [handshake] … expected object, path ["params","appInfo"]`
+  (2026-11-11); `dev/browser_test.py` + `dev/host.html` now reject it locally.
 
 Treat every §12 observation made in the browser as first-hand evidence for these.
 
@@ -306,6 +325,7 @@ Treat every §12 observation made in the browser as first-hand evidence for thes
 
 | Symptom | Most likely cause (this server / this stack) |
 |---|---|
+| View shows `[handshake] … expected object, path ["params","appInfo"]` | the view sent `ui/initialize` without `appInfo` — the host validates params strictly. `viewer.js` must send `appInfo:{name,version}`; `dev/browser_test.py` asserts it |
 | Registration refused | image not under the `ghcr.io/shanghai-rits/` allowlist prefix |
 | Start ends `failed` with a pull error | no local image under that exact tag, or backend can't reach Docker (`DOCKER_SOCKET` pipe wrong / daemon down) |
 | Running, but Tools empty | port or endpoint path wrong — must be `8000` + `/mcp` |
