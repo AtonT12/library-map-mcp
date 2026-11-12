@@ -33,6 +33,9 @@ const View = (() => {
   let route = null;      // parsed {legs, origin, destination, planId, warnings}
   let floor = null;      // current floor tab
   let vbMemo = {};       // floor -> {x,y,w,h} viewBox memory
+  let bounds3D = null;
+  // Normalized camera framing survives projection changes on resize.
+  let camera3D = { zoom: 1, cx: 0.5, cy: 0.5 };
   // The 3D model is the default view: a flat plan cannot show a route that
   // changes floors, and the extruded model reads as the building itself.
   // A caller can still ask for the flat view (the model passes
@@ -123,12 +126,11 @@ const View = (() => {
 
   // -- Host state --------------------------------------------------------------
   function applyTheme() {
-    const theme = hostContext && hostContext.theme;
     const de = document.documentElement;
-    // Host theme is authoritative. Missing theme means the product default
-    // is light; never fall through to the operating system preference.
-    de.style.colorScheme = theme === "dark" ? "dark" : "light";
-    de.dataset.theme = theme === "dark" ? "dark" : "light";
+    // Ask's chat is light. Older hosts report the OS theme instead of the
+    // page theme, so keep this map light on initialize and context updates.
+    de.style.colorScheme = "light";
+    de.dataset.theme = "light";
   }
 
   function maxHeight() {
@@ -311,6 +313,7 @@ const View = (() => {
     // A new plan starts from its first floor with a fresh fitted viewBox.
     floor = route.legs[0].floor;
     vbMemo = {};
+    camera3D = { zoom: 1, cx: 0.5, cy: 0.5 };
     if (refitFrame && typeof cancelAnimationFrame !== "undefined") {
       cancelAnimationFrame(refitFrame);
       refitFrame = null;
@@ -422,6 +425,12 @@ const View = (() => {
     if (!m) return null;
     const k = kmap(f);
     const pts = [];
+    // Start with the whole building footprint, including every rectangle
+    // of the L-shaped 5F. Routes add context rather than define a close-up.
+    floorRects(f).forEach((r) => {
+      pts.push([r[0] * k.kx, r[1] * k.ky],
+               [r[2] * k.kx, r[3] * k.ky]);
+    });
     const leg = legByFloor(f);
     if (leg) {
       (Array.isArray(leg.polyline) ? leg.polyline : []).forEach((p) => {
@@ -447,18 +456,9 @@ const View = (() => {
       x0 = r[0] * k.kx; y0 = r[1] * k.ky;
       x1 = r[2] * k.kx; y1 = r[3] * k.ky;
     }
-    const span = Math.max(x1 - x0, y1 - y0, 1);
-    const pad = Math.max(30, span * 0.1);
-    // A short route should still show enough floor context to be readable;
-    // otherwise the fit turns into an extreme close-up with oversized
-    // station dots.
-    const minW = Math.min(m.w, Math.max(300, m.w * 0.45));
-    const minH = Math.min(m.h, Math.max(220, m.h * 0.38));
-    const w = Math.min(m.w, Math.max(minW, x1 - x0 + pad * 2));
-    const h = Math.min(m.h, Math.max(minH, y1 - y0 + pad * 2));
-    const x = Math.max(0, Math.min((x0 + x1) / 2 - w / 2, m.w - w));
-    const y = Math.max(0, Math.min((y0 + y1) / 2 - h / 2, m.h - h));
-    return { x, y, w, h };
+    const pad = Math.max(20, Math.max(x1 - x0, y1 - y0) * 0.025);
+    return { x: x0 - pad, y: y0 - pad,
+             w: x1 - x0 + pad * 2, h: y1 - y0 + pad * 2 };
   }
 
   function clampVB(vb, f) {
@@ -467,11 +467,10 @@ const View = (() => {
     const fit = fitVB(f);
     const maxW = fit ? fit.w : m.w;
     vb.w = Math.min(Math.max(vb.w, 40), maxW);
-    vb.h = Math.min(Math.max(vb.h, 40), m.h);
-    if (vb.w >= m.w) vb.x = 0;
-    else vb.x = Math.min(Math.max(vb.x, 0), m.w - vb.w);
-    if (vb.h >= m.h) vb.y = 0;
-    else vb.y = Math.min(Math.max(vb.y, 0), m.h - vb.h);
+    vb.h = Math.min(Math.max(vb.h, 40), fit ? fit.h : m.h);
+    const limits = fit || { x: 0, y: 0, w: m.w, h: m.h };
+    vb.x = Math.min(Math.max(vb.x, limits.x), limits.x + limits.w - vb.w);
+    vb.y = Math.min(Math.max(vb.y, limits.y), limits.y + limits.h - vb.h);
     return vb;
   }
 
@@ -497,10 +496,19 @@ const View = (() => {
     svg.textContent = "";
     setViewBox(svg, vb);
     setStageAspect(vb.w, vb.h);
-    svgEl("image", { href: m.href, x: 0, y: 0, width: m.w, height: m.h }, svg);
+    // Clip the image to the physical floor: 5F's legend occupies the empty
+    // side of its L, while 6F's legend is below the floor itself.
+    const defs = svgEl("defs", null, svg);
+    const clip = svgEl("clipPath", { id: "floor-2d", clipPathUnits: "userSpaceOnUse" }, defs);
+    floorRects(floor).forEach((r) => svgEl("rect", {
+      x: r[0] * k.kx, y: r[1] * k.ky,
+      width: (r[2] - r[0]) * k.kx, height: (r[3] - r[1]) * k.ky,
+    }, clip));
+    svgEl("image", { href: m.href, x: 0, y: 0, width: m.w, height: m.h,
+                     "clip-path": "url(#floor-2d)" }, svg);
     // High-resolution tiles sit directly above the base image. The route
     // is appended after this group so zoom tiles can never cover it.
-    const tiles = svgEl("g", { id: "tiles" }, svg);
+    const tiles = svgEl("g", { id: "tiles", "clip-path": "url(#floor-2d)" }, svg);
     void tiles;
     const g = svgEl("g", { id: "route" }, svg);
     const poly = Array.isArray(leg.polyline) ? leg.polyline : [];
@@ -535,12 +543,40 @@ const View = (() => {
   }
 
   // -- V4: pan / zoom ------------------------------------------------------------
+  function current3DVB() {
+    const b = bounds3D || { x: 0, y: 0, w: 800, h: 600 };
+    const w = b.w / camera3D.zoom, h = b.h / camera3D.zoom;
+    return { x: b.x + b.w * camera3D.cx - w / 2,
+             y: b.y + b.h * camera3D.cy - h / 2, w, h };
+  }
+
+  function activeVB() {
+    return mode === "3d" ? current3DVB() : currentVB(floor);
+  }
+
+  function updateVB(vb) {
+    if (mode === "3d") {
+      camera3D = {
+        zoom: Math.min(8, Math.max(0.6, bounds3D.w / vb.w)),
+        cx: Math.min(1, Math.max(0, (vb.x + vb.w / 2 - bounds3D.x) / bounds3D.w)),
+        cy: Math.min(1, Math.max(0, (vb.y + vb.h / 2 - bounds3D.y) / bounds3D.h)),
+      };
+    } else {
+      vbMemo[floor] = clampVB(vb, floor);
+    }
+    applyVB();
+  }
+
   function svgPoint(svg, evt) {
     const r = svg.getBoundingClientRect ? svg.getBoundingClientRect() : { left: 0, top: 0, width: 800, height: 600 };
-    const vb = currentVB(floor);
+    const vb = activeVB();
+    // SVG uses xMidYMid meet: account for letterboxing in a tall chat frame.
+    const scale = Math.min((r.width || 1) / vb.w, (r.height || 1) / vb.h);
+    const ox = ((r.width || 1) - vb.w * scale) / 2;
+    const oy = ((r.height || 1) - vb.h * scale) / 2;
     return {
-      x: vb.x + ((evt.clientX - r.left) / (r.width || 1)) * vb.w,
-      y: vb.y + ((evt.clientY - r.top) / (r.height || 1)) * vb.h,
+      x: vb.x + (evt.clientX - r.left - ox) / scale,
+      y: vb.y + (evt.clientY - r.top - oy) / scale,
     };
   }
 
@@ -550,42 +586,41 @@ const View = (() => {
     svg.__bound = true;
     let drag = null;
     svg.addEventListener("pointerdown", (ev) => {
-      if (mode !== "2d" || !route) return;
+      if (!route || (ev.button !== undefined && ev.button !== 0)) return;
       // A marker is an action, not the start of a pan. Capturing the
       // pointer here retargets pointerup and can suppress the marker click.
       if (ev.target && ev.target.getAttribute &&
           ev.target.getAttribute("data-pid")) return;
-      drag = { x: ev.clientX, y: ev.clientY, vb: { ...currentVB(floor) } };
+      drag = { x: ev.clientX, y: ev.clientY, vb: { ...activeVB() }, mode, floor };
       if (svg.setPointerCapture) { try { svg.setPointerCapture(ev.pointerId); } catch { /* noop */ } }
     });
     svg.addEventListener("pointermove", (ev) => {
-      if (mode !== "2d" || !route || !drag) return;
+      if (!route || !drag || drag.mode !== mode || drag.floor !== floor) return;
       const r = svg.getBoundingClientRect ? svg.getBoundingClientRect() : { width: 800, height: 600 };
-      const vb = currentVB(floor);
-      vb.x = drag.vb.x - ((ev.clientX - drag.x) / (r.width || 1)) * drag.vb.w;
-      vb.y = drag.vb.y - ((ev.clientY - drag.y) / (r.height || 1)) * drag.vb.h;
-      clampVB(vb, floor);
-      applyVB();
+      const units = Math.max(drag.vb.w / (r.width || 1), drag.vb.h / (r.height || 1));
+      updateVB({ ...drag.vb,
+        x: drag.vb.x - (ev.clientX - drag.x) * units,
+        y: drag.vb.y - (ev.clientY - drag.y) * units });
     });
     const end = () => { if (drag) { drag = null; maybeTile(); } };
     svg.addEventListener("pointerup", end);
     svg.addEventListener("pointercancel", end);
     svg.addEventListener("wheel", (ev) => {
-      if (mode !== "2d" || !route) return;
+      if (!route) return;
       if (ev.preventDefault) ev.preventDefault();
-      const vb = currentVB(floor);
+      const vb = { ...activeVB() };
       const f = ev.deltaY > 0 ? 1.2 : 1 / 1.2;
       const p = svgPoint(svg, ev);
-      const fit = fitVB(floor);
+      const fit = mode === "3d" ? null : fitVB(floor);
       const byHeight = fit ? fit.h / (vb.h / vb.w) : Infinity;
-      const maxW = fit ? Math.min(fit.w, byHeight) : (mapInfo(floor) || { w: 800 }).w;
-      const nw = Math.min(Math.max(vb.w * f, 40), maxW);
+      const maxW = mode === "3d" ? bounds3D.w / 0.6 : Math.min(fit.w, byHeight);
+      const minW = mode === "3d" ? bounds3D.w / 8 : 40;
+      const nw = Math.min(Math.max(vb.w * f, minW), maxW);
       const nh = nw * (vb.h / vb.w);
       vb.x = p.x - ((p.x - vb.x) / vb.w) * nw;
       vb.y = p.y - ((p.y - vb.y) / vb.h) * nh;
       vb.w = nw; vb.h = nh;
-      clampVB(vb, floor);
-      applyVB();
+      updateVB(vb);
       maybeTile();
     }, { passive: false });
   }
@@ -593,7 +628,7 @@ const View = (() => {
   function applyVB() {
     const svg = $("map");
     if (!svg) return;
-    const vb = currentVB(floor);
+    const vb = activeVB();
     setViewBox(svg, vb);
   }
 
@@ -1005,7 +1040,8 @@ const View = (() => {
       return;
     }
     svg.textContent = "";
-    setViewBox(svg, vb);
+    bounds3D = vb;
+    setViewBox(svg, current3DVB());
     const stage = $("stage");
     const beforeAspect = stage ? stage.style.aspectRatio : "";
     setStageAspect(vb.w, vb.h);
@@ -1217,6 +1253,7 @@ const View = (() => {
     hideError();
     clearTiles();
     vbMemo = {};
+    camera3D = { zoom: 1, cx: 0.5, cy: 0.5 };
     lastTileKey = null;
     tiltSQ = 0.62;
     if (refitFrame && typeof cancelAnimationFrame !== "undefined") {

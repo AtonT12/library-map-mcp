@@ -102,7 +102,8 @@ def get_library_directions(destination: str, start: str = None) -> CallToolResul
 
     This returns FLAT 2D floor map IMAGES. For the INTERACTIVE route view
     -- an embedded 3D model of the building with the route running through
-    it, which the user can pan, zoom and click -- call get_route instead.
+    it, which the user can drag to pan, scroll to zoom and click start or
+    destination markers for details -- call get_route instead.
     Prefer get_route for a plain "how do I get to X" question. Use this
     tool only when the user explicitly wants flat 2D map images, or when
     they ask for a 3D / three-dimensional view, in which case call
@@ -133,7 +134,8 @@ def get_library_directions(destination: str, start: str = None) -> CallToolResul
         trip that stays on one floor returns ONE map. A trip between 5F and
         6F returns TWO maps (one per floor); the text names the EXACT vertical
         connection to use (e.g. "Central Stairs", "West Stairs", or
-        "Elevator"), chosen by proximity. When relaying directions, name only
+        "Elevator"), chosen by the shortest available wall-aware walk across
+        both floors. When relaying directions, name only
         that specific connection -- do NOT say a vague "stairs/elevator" or
         invent a different one. Repeat the floor names exactly as given and
         present every image, in order.
@@ -265,8 +267,10 @@ def get_route(destination: str, start: str = None,
     per-floor polylines in full-res pixel coords plus human steps, and the
     interactive view turns that into an embedded 3D MODEL of the building:
     both floors as extruded plates, the real walls standing up, and the
-    route running through it. The user can pan, zoom, switch floors and
-    click any place for details.
+    route running through it. In both 2D and 3D the user can drag to pan,
+    scroll to zoom, switch floors, and click the start or destination marker
+    for details. Reset returns to the initial overview. The 3D view has a
+    fixed oblique angle; it does not support rotating the building.
 
     Use get_library_directions instead only when the user explicitly wants
     flat 2D map images, and get_route_3d when they want a 3D model IMAGE

@@ -50,17 +50,17 @@ them; unknown fields inside known messages are ignored (optional-read).
 Full `HostContext` also defines `toolInfo/styles/displayMode/locale/…`;
 `viewer.js` optional-reads only the two above. `host-context-changed`
 carries a **partial merged** into state (spec: "View SHOULD merge").
-Never white-screens on a missing field. Missing `theme` means **light**:
-the view must not independently follow `prefers-color-scheme`. A theme
-already pushed before the initialize response wins over the (older)
-initialize context.
+Never white-screens on a missing field. This library app always renders in
+**light** mode to match Ask's current chat UI, including when `theme` is
+missing or explicitly `dark`. It does not follow `prefers-color-scheme`.
+Other host context, including `containerDimensions`, is still merged and
+applied normally.
 
-`theme` describes **this page**, so a host must not derive it from the OS.
-Ask violated that until 2026-11-11 (`resolveHostTheme` fell back to
-`prefers-color-scheme` when the page had no `dark` class), which made every
-app render dark inside a light chat for OS-dark visitors. Fixed in
-`Ask-Roary-UI`; verified with `dev/ask_probe.py`, which forces the browser to
-OS-dark and asserts the view stays light.
+Ask's `resolveHostTheme` can fall back to the OS preference when the page
+has no `dark` class. The proposed host fix (Ask-Roary-UI PR #12) was closed
+without merging as of 2026-11-12. Keeping this map light fixes the mismatch
+from the app side without requiring a host update. If Ask gains a dark UI,
+revisit this product policy before enabling host-driven map themes.
 
 ## Production UI surface
 
@@ -69,6 +69,12 @@ toggle, Reset, a marker-detail overlay, and actionable error text. It
 must not contain `ping`/`status`/`tilt` controls, raw JSON, or a route
 step list; the host chat owns the route narrative. `get_location_detail`
 takes exactly `{place_id: string}`.
+
+Both 2D and 3D support dragging to pan and scrolling to zoom. The 3D
+projection has a fixed oblique angle; it is not an orbit camera. Only start
+and destination markers open place details. The 2D initial view includes the
+entire floor footprint, with legend areas clipped out. Reset clears both
+views' pan/zoom state; resizing preserves the user's relative 3D framing.
 
 ## Order / timing
 

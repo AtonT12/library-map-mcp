@@ -99,18 +99,18 @@ Verified outcome: negotiates `2025-06-18`; `resources/list` contains `ui://nav/l
 
 Deterministic browser layer: `dev/browser_test.py` drives the generated view in real Chromium at 360/402/760/1100 CSS px, including visible 3D/2D pixels, floor switching, pan/zoom/Reset, theme, marker details, layout overflow, tile ordering, and the handshake error state.
 
-Real-host probe: `dev/ask_probe.py` (manual, needs Track B up) drives the **actual** Ask chat at 1100–1440 viewport widths with the browser forced to OS-dark, and asserts the app follows the host theme, stays on one control row, has no horizontal overflow, keeps a usable stage, and shows no error bar. It prints JSON and exits non-zero on failure; screenshot lands in `review_out/ask-probe.png`. The manual checklist below is the **real Ask host** layer, run after the browser suite:
+Real-host probe: `dev/ask_probe.py` (manual, needs Track B up) drives the **actual** Ask chat at 1100–1440 viewport widths with the browser forced to OS-dark, and asserts the app stays light to match Ask, stays on one control row, has no horizontal overflow, keeps a usable stage, and shows no error bar. It prints JSON and exits non-zero on failure; screenshot lands in `review_out/ask-probe.png`. The manual checklist below is the **real Ask host** layer, run after the browser suite:
 
 | # | Area | What to check |
 |---|---|---|
-| V4 | Pan / zoom | wheel zoom centred on cursor; pan doesn't drift; 3D leaves wheel/drag to the chat (no map movement) |
+| V4 | Pan / zoom | both 2D and 3D drag to pan and scroll to zoom around the cursor; resizing preserves relative 3D framing; marker clicks still work |
 | V5 | Place detail | tapping a marker opens the detail overlay with the right record; request uses `place_id` |
-| V6 | Floor tabs | 5F ⇄ 6F switch re-renders the correct base map with a route-focused viewBox |
+| V6 | Floor tabs | 5F ⇄ 6F switches the floor; 2D starts with the whole floor footprint and hides legend regions |
 | V7 | Hi-res tiles | zoom past the 0.35 threshold triggers a `get_map_view` tile (800 ms debounce); route stays above the tile |
 | 3D | Oblique | **on by default** (a flat plan cannot show a floor change); extrudes slabs, circles stay round / text upright, non-current floor dims to 0.72. `view_mode="2d"` asks for the flat plan |
 | Reset | Map control | restores requested 3D/2D mode, first floor, initial pan/zoom, and clears tiles/errors; never re-runs the handshake |
 | L3 | Error bar | the three `tool-result` flavours never white-screen; 3 s handshake timeout shows **Reconnect**, not Retry |
-| V9 | Theme | host light wins over OS dark; host changes update the view; missing theme defaults to light |
+| V9 | Theme | map stays light with OS dark and with absent, light, or dark host theme, including context updates |
 | V8 | Height / width | at ~402 CSS px there is no horizontal scroll, controls stay on one row, and the map keeps a useful height; long error text stays inside the frame |
 
 ## 5. Automated suites
@@ -251,7 +251,7 @@ Open the experience's chat (`http://localhost:5174`) and use the review steering
 Call the get_route tool with destination N607 and show its interactive map. Start at the Entrance.
 ```
 
-Check: the tool is really `get_route` (not `get_route_3d` or the legacy image tools); the view renders **inline**; the 3D model is visible (not merely present in the DOM); 5F/6F flat views show the route rather than the legend; floor switching, pan/zoom and Reset work; light/dark follows the host; marker details work; and the embedded UI has no repeated route prose or `ping/status/tilt` debug controls.
+Check: the tool is really `get_route` (not `get_route_3d` or the legacy image tools); the view renders **inline**; the 3D model is visible (not merely present in the DOM); 5F/6F flat views show the whole floor and route with legend regions hidden; floor switching, pan/zoom in both modes and Reset work; the map stays light to match Ask; start/destination marker details work; and the embedded UI has no repeated route prose or `ping/status/tilt` debug controls.
 
 **Narrow-width measurement (PR #8 review):** do not infer width from a screenshot. Resize the Ask side/resources panels until the iframe's `getBoundingClientRect().width` is **402 ± 1 CSS px**, then record the outer viewport, sidebar/resources widths, iframe rect, DPR, and `document.documentElement.scrollWidth/clientWidth`. There must be no horizontal scroll and the floor/2D/Reset controls must remain on one row.
 
@@ -303,10 +303,10 @@ This sequence is the repeatable P1 evidence: Ask created the instance, proxied t
     `documentElement.classList.contains("dark") ? "dark" : prefers-color-scheme`.
     Nothing in that UI ever adds `dark`, so a visitor whose **OS** was dark got
     `theme: "dark"` injected into every app while the chat stayed light — the
-    exact "app is dark inside Ask's light UI" defect. Fixed host-side in
-    `Ask-Roary-UI/src/components/McpApp/McpAppHostContext.tsx`
-    (`resolveHostTheme` no longer consults the OS). Our view needs no change:
-    it follows the declared theme and defaults to light when absent.
+    exact "app is dark inside Ask's light UI" defect. The proposed host fix
+    (Ask-Roary-UI PR #12) was closed without merging as of 2026-11-12.
+    The library app now fixes this independently by keeping its map light,
+    even when the host reports `dark`; no host update is required.
   - `maxHeight` is clamped to `min(760, max(360, 72% of viewport))`; observed
     iframe heights 281–390 CSS px at 1100–1440 viewport widths.
   - `host-context-changed` re-pushes `{theme, locale, maxHeight}` on resize or

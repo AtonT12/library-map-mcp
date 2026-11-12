@@ -4,7 +4,7 @@ Requires the local stack from docs/RUNBOOK_ask-local-dev.md §6-§11:
 Ask backend on :3000, Roary UI on :5174, and the `nyush-library` row running.
 
 What it proves, which the stub harness cannot:
-  * the view follows the host's declared theme, NOT the OS preference
+  * the view stays light to match Ask even when the host reports OS dark
     (the browser is forced to `color-scheme: dark` on purpose);
   * the embedded iframe is genuinely narrow and still lays out on one row;
   * the 3D model really paints pixels inside the real sandboxed frame

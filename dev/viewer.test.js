@@ -124,8 +124,18 @@ const driver = `
   assert((init.params.appCapabilities.availableDisplayModes || []).includes("inline"),
     "display modes");
   onMsg({ data: { jsonrpc: "2.0", id: init.id,
-    result: { hostContext: { theme: "light" } } } });
+    result: { hostContext: { theme: "dark" } } } });
   await sleep(50);
+  assert(document.documentElement.dataset.theme === "light",
+    "Ask map stays light when the host reports OS dark");
+  assert(document.documentElement.style.colorScheme === "light",
+    "native controls stay light");
+  onMsg({ data: { jsonrpc: "2.0", method: "ui/notifications/host-context-changed",
+    params: { theme: "dark", containerDimensions: { maxHeight: 640 } } } });
+  assert(document.documentElement.dataset.theme === "light",
+    "host updates cannot switch the map to dark");
+  assert(el("app").style.maxHeight === "640px",
+    "host dimensions still apply");
 
   onMsg({ data: { jsonrpc: "2.0", method: "ui/notifications/tool-result",
     params: { content: [{ type: "text", text: "route" }],
@@ -148,15 +158,15 @@ const driver = `
     && String(n.attrs["clip-path"] || "").indexOf("#clip-") >= 0);
   assert(clipped.length >= 1, "texture clipped to the plan outline");
 
-  // The flat view fits the current route, not the full base image: both
-  // floors carry a legend/title band that must not dominate the first frame.
+  // The flat view starts with the whole floor, including the 5F west wing.
   View._t.setMode("2d");
   await sleep(20);
   const vb5 = svg.attrs.viewBox.split(" ").map(Number);
   assert(vb5.every(Number.isFinite) && vb5[2] > 0 && vb5[3] > 0,
     "finite 5F viewBox: " + svg.attrs.viewBox);
-  assert(vb5[2] < 1515 || vb5[3] < 1051,
-    "5F viewBox must crop the legend, got " + svg.attrs.viewBox);
+  assert(vb5[0] <= 0 && vb5[1] <= 0 &&
+    vb5[0] + vb5[2] >= 1515 && vb5[1] + vb5[3] >= 1051,
+    "5F overview must include the full floor, got " + svg.attrs.viewBox);
   assert(el("stage").style.aspectRatio ===
     Math.round(vb5[2] * 100) / 100 + " / " + Math.round(vb5[3] * 100) / 100,
     "2D stage aspect: " + el("stage").style.aspectRatio);
@@ -194,10 +204,14 @@ const driver = `
   let prevented = false;
   svg.dispatch("wheel", { deltaY: -100, clientX: 120, clientY: 80,
     preventDefault() { prevented = true; } });
+  const zoomed3d = svg.attrs.viewBox;
+  assert(Number(zoomed3d.split(" ")[2]) < Number(vb3d.split(" ")[2]),
+    "3D wheel must zoom the model");
   svg.dispatch("pointerdown", { clientX: 120, clientY: 80, pointerId: 1 });
   svg.dispatch("pointermove", { clientX: 80, clientY: 40 });
-  assert(svg.attrs.viewBox === vb3d, "3D wheel/drag must not touch viewBox");
-  assert(!prevented, "3D wheel must leave chat scrolling alone");
+  svg.dispatch("pointerup", {});
+  assert(svg.attrs.viewBox !== zoomed3d, "3D drag must pan the model");
+  assert(prevented, "3D wheel must be handled by the map");
   View._t.setTilt(1.0);
   View._t.setTilt(0.45);
   View._t.setMode("2d");

@@ -22,8 +22,12 @@ This project bridges the gap by:
   image tool (`get_route_3d`), and 2 legacy image tools (`get_library_map`,
   `get_library_directions`) kept as the pre-App fallback.
 - **View**: one self-contained HTML app (`ui://nav/library-view.html`) built by
-  `src/view/template.py` + `viewer.js` — 2D pan/zoom and oblique 3D, no
+  `src/view/template.py` + `viewer.js` — pan/zoom in 2D and oblique 3D, no
   external requests (CSP `resourceDomains: []`).
+- **Cross-floor routing**: compares the complete wall-aware walk through each
+  paired staircase or elevator, preferring routes without wall penalties or
+  fallbacks. Accessible-only trips use the elevator. The legacy image rollback
+  preserves its previous routing and frozen JPEG output.
 - **Maintenance**: Includes two browser editors — `corridors.html` for walls
   and the walkable spine (the single source of truth, exported to
   `corridors.json`) and `calibrate.html` for marking location points on the
@@ -55,6 +59,7 @@ PYTHONPATH=src python src/test.py           # 220 routes: no crossing, no <6px c
 PYTHONPATH=src python src/test_fallbacks.py # kill-switch invariants + frozen legacy image bytes
 PYTHONPATH=src python src/test_route_schema.py  # models vs schemas/*.json snapshots + live protocol
 PYTHONPATH=src python src/test_api_contract.py  # unique ids, MIME, tool schemas, fallback warnings
+PYTHONPATH=src python src/test_route_pairs.py   # location pairs, both directions, accessible routes, detour limits
 PYTHONPATH=src python dev/route_quality.py  # L1 reachable / L2 walkable / L3 efficient / L4 markers
 PYTHONPATH=src python dev/xcheck_raster.py  # independent raster check; any disagreement fails
 node dev/viewer.test.js                     # view logic on a fake DOM (CI uses Node 20)

@@ -289,7 +289,9 @@ def main():
             page.on("console", lambda m: errors.append(
                 f"console: {m.text}") if m.type == "error" else None)
             page.set_content(_host_html(
-                preview_url, route, _tiny_webp()))
+                preview_url, route, _tiny_webp()).replace(
+                    'window.__hostTheme = "light";',
+                    'window.__hostTheme = "dark";'))
             frame = _wait_frame(page, preview_url)
             _settle(frame)
             frame.wait_for_function(
@@ -311,22 +313,34 @@ def main():
             }""")
             assert frame.evaluate("document.documentElement.dataset.theme") == "light"
 
-            # 2. 3D must not let map gestures rewrite the projected viewBox.
-            before = frame.evaluate(
-                "document.querySelector('#map').getAttribute('viewBox')")
-            _dispatch_wheel(frame, -300)
-            frame.evaluate("""() => {
-              const s = document.querySelector("#map");
-              s.dispatchEvent(new PointerEvent("pointerdown", {
-                pointerId:1, clientX:100, clientY:100, bubbles:true}));
-              s.dispatchEvent(new PointerEvent("pointermove", {
-                pointerId:1, clientX:20, clientY:20, bubbles:true}));
-            }""")
-            after = frame.evaluate(
-                "document.querySelector('#map').getAttribute('viewBox')")
-            assert before == after, (before, after)
+            # 2. Real mouse gestures pan and zoom the 3D model.
+            rect = frame.locator("#map").bounding_box()
+            x, y = rect["x"] + rect["width"] * .7, rect["y"] + rect["height"] * .8
+            page.mouse.move(x, y)
+            page.mouse.wheel(0, -300)
+            frame.wait_for_function(
+                "document.querySelector('#map').viewBox.baseVal.width < " + str(vb3d["w"] - .5))
+            zoomed = _viewbox(frame)
+            page.mouse.down()
+            page.mouse.move(x - 45, y - 25, steps=5)
+            page.mouse.up()
+            panned = _viewbox(frame)
+            assert panned["x"] != zoomed["x"], (zoomed, panned)
+            # Resizing must preserve the user's zoom rather than re-fit it away.
+            page.evaluate("window.setFrameWidth(440)")
+            _settle(frame)
+            assert _viewbox(frame)["w"] < vb3d["w"], "resize discarded 3D zoom"
+            page.evaluate("window.setFrameWidth(402)")
+            _settle(frame)
+            frame.locator("#reset").click()
+            _settle(frame)
+            assert _viewbox(frame)["raw"] == vb3d["raw"]
+            marker3d = frame.locator("circle[data-pid]").first
+            marker3d.click()
+            frame.locator("#detail-close").wait_for(state="visible")
+            frame.locator("#detail-close").click()
 
-            # 3. Flat 5F frame is route-focused, not the legend band.
+            # 3. Flat 5F opens on the full floor, not a tight route crop.
             frame.locator("#mode3d").click()
             frame.wait_for_function(
                 "document.querySelector('#mode3d').textContent.trim() === '2D'")
@@ -334,7 +348,7 @@ def main():
             vb5 = _viewbox(frame)
             route5 = _bbox(frame)
             assert _contains(vb5, route5, tol=2), (vb5, route5)
-            assert vb5["w"] * vb5["h"] < 1515 * 1051, vb5
+            assert _contains(vb5, {"x":0, "y":0, "w":1515, "h":1051}), vb5
             path5 = _screenshot(frame, "402-2d-5f.png")
             assert _blue_pixels(path5) > 20, "5F screenshot has no blue route"
 
@@ -346,6 +360,8 @@ def main():
             vb6 = _viewbox(frame)
             route6 = _bbox(frame)
             assert _contains(vb6, route6, tol=2), (vb6, route6)
+            assert _contains(vb6, {"x":0, "y":0, "w":1883,
+                                  "h":1760 * 1011 / 4044}), vb6
             assert vb6["h"] < 1011 * 0.55, vb6
             path6 = _screenshot(frame, "402-2d-6f.png")
             assert _blue_pixels(path6) > 20, "6F screenshot has no blue route"
@@ -370,25 +386,33 @@ def main():
             _settle(frame)
             marker = frame.locator("circle[data-pid]").first
             assert marker.count() == 1, "no clickable marker"
+            detail_calls_before = page.evaluate(
+                "window.__calls.filter((c) => c.name === 'get_location_detail').length")
             marker.click()
             page.wait_for_function(
-                "window.__calls.some((c) => c.name === 'get_location_detail')",
+                "window.__calls.filter((c) => c.name === 'get_location_detail').length > "
+                + str(detail_calls_before),
                 timeout=5000)
             calls = page.evaluate("window.getCalls()")
-            detail = next(c for c in calls if c["name"] == "get_location_detail")
+            detail = [c for c in calls if c["name"] == "get_location_detail"][-1]
             assert list(detail["arguments"]) == ["place_id"], detail
             assert detail["arguments"]["place_id"] == (
                 route["origin"]["id"] if route.get("origin") else None), detail
             assert frame.evaluate("document.querySelector('#detail').hidden") is False
 
-            # 7. Host light wins over OS dark, and a pushed update is applied.
+            # 7. Ask's light map ignores erroneous OS-dark host reports,
+            # both at initialize and on subsequent context updates.
             assert frame.evaluate(
                 "getComputedStyle(document.body).backgroundColor") == "rgb(255, 255, 255)"
+            page.evaluate("window.setHostTheme('light')")
+            _settle(frame)
             page.evaluate("window.setHostTheme('dark')")
-            frame.wait_for_function(
-                "document.documentElement.dataset.theme === 'dark'")
+            _settle(frame)
+            assert frame.evaluate("document.documentElement.dataset.theme") == "light"
+            assert frame.evaluate("document.documentElement.style.colorScheme") == "light"
             assert frame.evaluate(
-                "getComputedStyle(document.body).backgroundColor") == "rgb(28, 28, 30)"
+                "getComputedStyle(document.body).backgroundColor") == "rgb(255, 255, 255)"
+            _screenshot(frame, "402-host-dark-map-light.png")
             page.evaluate("window.setHostTheme('light')")
             frame.wait_for_function(
                 "document.documentElement.dataset.theme === 'light'")

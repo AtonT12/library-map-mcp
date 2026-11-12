@@ -800,10 +800,14 @@ def _transit_options(floor):
             if r['type'].lower() == 'transit' and r['floor'] == floor]
 
 
-def _nearest_transit(from_floor, to_floor, x, y, accessible_only=False):
-    """Pick the transit structure (stairs/elevator) nearest (x, y) on
-    `from_floor`, returning (from_row, to_row) for the same structure on the
-    destination floor. Returns (None, None) if none is available on both floors.
+def _nearest_transit(from_floor, to_floor, x, y, accessible_only=False,
+                     destination_xy=None):
+    """Pick a paired transit structure, considering the complete walking route.
+
+    With destination_xy, compare actual wall-aware walking lengths on both
+    floors, preferring routes without wall penalties or fallbacks. Without
+    a destination, retain the origin-only proximity lookup for callers that
+    only want the nearest transit point. Returns (None, None) if no pair exists.
 
     With accessible_only=True, only the elevator is considered.
     """
@@ -815,13 +819,31 @@ def _nearest_transit(from_floor, to_floor, x, y, accessible_only=False):
                       if s['call_start'] == 'ELEVATOR']
     if not candidates:
         return None, None
+    if destination_xy is not None:
+        def score(pair):
+            source, destination = pair
+            first_diag, second_diag = {}, {}
+            first = _path_points(
+                from_floor, (x, y), (int(source['x']), int(source['y'])),
+                first_diag)
+            second = _path_points(
+                to_floor, (int(destination['x']), int(destination['y'])),
+                destination_xy, second_diag)
+            unsafe = any(
+                diag.get('penalty_edges', 0) > 0
+                or diag.get('end_fallback') or diag.get('graph_fallback')
+                for diag in (first_diag, second_diag))
+            return (unsafe, _polyline_length(first) + _polyline_length(second))
+
+        return min(candidates, key=score)
     return min(
         candidates,
         key=lambda pair: (int(pair[0]['x']) - x) ** 2 + (int(pair[0]['y']) - y) ** 2,
     )
 
 
-def build_route(destination, start=None, accessible_only=False):
+def build_route(destination, start=None, accessible_only=False,
+                optimize_transit=True):
     """Compute a walking route and return it as plain data (no images).
 
     `start` defaults to the library Entrance & Exit. With accessible_only=True
@@ -835,6 +857,8 @@ def build_route(destination, start=None, accessible_only=False):
          'transit': {'name', 'from_floor', 'to_floor', 'direction'} | None,
          'msg': text_msg}
 
+    optimize_transit=False is reserved for the byte-frozen legacy image
+    rollback; normal routes minimize the complete cross-floor walk.
     get_directions() renders the legs to JPEG; Step 3 serializes this dict.
     Raises ValueError if either endpoint cannot be resolved.
     """
@@ -898,11 +922,12 @@ def build_route(destination, start=None, accessible_only=False):
                           'diag': diag1}],
                 'transit': None, 'msg': msg}
 
-    # Cross floor: route start -> nearest transit, then transit -> destination.
-    # The transit structure (stairs/elevator) is chosen by distance from the
-    # start, and the SAME structure is used to arrive on the destination floor.
+    # Cross floor: compare the full walk through every paired transit, rather
+    # than choosing the stairs nearest the start in a straight line. Both
+    # legs must use the same structure; accessible trips consider elevators only.
     s_transit, d_transit = _nearest_transit(s_floor, d_floor, *s_xy,
-                                            accessible_only=accessible_only)
+                                            accessible_only=accessible_only,
+                                            destination_xy=d_xy if optimize_transit else None)
     if not s_transit:
         raise ValueError(
             f"No transit (stairs/elevator) defined between {s_floor} and {d_floor}; "
@@ -952,7 +977,8 @@ def get_directions(destination, start=None):
     instance nearest the start. Raises ValueError if either endpoint cannot be
     resolved.
     """
-    route = build_route(destination, start)
+    route = build_route(destination, start,
+                        optimize_transit=ENABLE_MCP_APPS)
     images = [(leg['floor'],
                _draw_route(leg['map_file'], leg['points'],
                            start_color=leg['start_color'],

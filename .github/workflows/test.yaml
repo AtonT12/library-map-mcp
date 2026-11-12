@@ -30,6 +30,7 @@ jobs:
           PYTHONPATH=src python src/test_fallbacks.py
           PYTHONPATH=src python src/test_route_schema.py
           PYTHONPATH=src python src/test_api_contract.py
+          PYTHONPATH=src python src/test_route_pairs.py
 
       - name: Route quality (walkable / reachable / efficient / points)
         # Second opinion on the same routes, computed from the free space

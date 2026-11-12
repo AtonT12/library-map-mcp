@@ -9,6 +9,7 @@ truthfulness. Run with:
 
 import asyncio
 import base64
+import copy
 import io
 import json
 import os
@@ -126,6 +127,52 @@ def test_clean_map_has_no_warnings():
     print(f"[ok] {total} current routes have clean public warnings")
 
 
+def test_cross_floor_transit_uses_complete_walk():
+    plan = library.get_route("Scholars Space", start="XR Space")
+    assert plan.totals.transits_used == ["Central Stairs"], plan.totals
+    assert not plan.warnings, plan.warnings
+    # West Stairs is nearer in a straight line from XR, but following the
+    # actual corridors to it doubles back past the central-stair corridor.
+    west_start = next(r for r in library._transit_options("5F")
+                      if r["call_start"] == "STAIRS_WEST")
+    west_end = next(r for r in library._transit_options("6F")
+                    if r["call_start"] == "STAIRS_WEST")
+    west_length = sum(library._polyline_length(points) for points in (
+        library._path_points("5F", tuple(plan.origin.point),
+                             (int(west_start["x"]), int(west_start["y"]))),
+        library._path_points("6F", (int(west_end["x"]), int(west_end["y"])),
+                             tuple(plan.destination.point)),
+    ))
+    assert plan.totals.distance_px < west_length * 0.6, (
+        plan.totals.distance_px, west_length)
+    accessible = library.get_route("Scholars Space", start="XR Space",
+                                   accessible_only=True)
+    assert accessible.totals.transits_used == ["Elevator"], accessible.totals
+    assert accessible.totals.step_free
+    print("[ok] cross-floor transit minimizes the complete walk, with elevator-only access")
+
+
+def test_transit_avoids_blocked_shortcut():
+    original = library.CORRIDORS
+    try:
+        library.CORRIDORS = copy.deepcopy(original)
+        central = next(r for r in library._transit_options("5F")
+                       if r["call_start"] == "STAIRS_MAIN")
+        x, y = int(central["x"]), int(central["y"])
+        library.CORRIDORS["5F"]["walls"].extend([
+            ((x-25, y-25), (x+25, y-25)),
+            ((x+25, y-25), (x+25, y+25)),
+            ((x+25, y+25), (x-25, y+25)),
+            ((x-25, y+25), (x-25, y-25)),
+        ])
+        plan = library.get_route("Scholars Space", start="XR Space")
+        assert plan.totals.transits_used == ["Elevator"], plan.totals
+        assert not plan.warnings, plan.warnings
+    finally:
+        library.CORRIDORS = original
+    print("[ok] transit selection avoids a shorter but wall-blocked stair route")
+
+
 def test_tool_input_schemas():
     tools = {t.name: t for t in asyncio.run(mcp_server.mcp.list_tools())}
     detail = tools["get_location_detail"].inputSchema
@@ -211,6 +258,8 @@ if __name__ == "__main__":
     test_diag_warnings_unit()
     test_public_warnings_propagate()
     test_clean_map_has_no_warnings()
+    test_cross_floor_transit_uses_complete_walk()
+    test_transit_avoids_blocked_shortcut()
     test_tool_input_schemas()
     test_image_mime_matches_bytes()
     test_kill_switch_mime()
